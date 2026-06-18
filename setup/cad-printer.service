@@ -1,0 +1,17 @@
+[Unit]
+Description=CAD Printer — servidor web
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 8080 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONPATH=__PROJECT_DIR__
+
+[Install]
+WantedBy=multi-user.target

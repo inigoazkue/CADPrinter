@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.env
+
+# Data (generated at runtime)
+data/prints/
+data/previews/
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Keep directory structure
+!data/.gitkeep
+!data/prints/.gitkeep
+!data/previews/.gitkeep
+
+# Temporary / test PDFs in root
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

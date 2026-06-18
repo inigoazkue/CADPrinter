@@ -1,0 +1,20 @@
+[Unit]
+Description=CAD Printer — monitor de impresiones
+After=network.target cad-printer.service
+Requires=cad-printer.service
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+WorkingDirectory=__PROJECT_DIR__
+ExecStart=__PROJECT_DIR__/venv/bin/python backend/watcher.py \
+    --watch-dir /var/spool/cups-pdf/ANONYMOUS \
+    --api http://localhost:8080
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONPATH=__PROJECT_DIR__
+
+[Install]
+WantedBy=multi-user.target

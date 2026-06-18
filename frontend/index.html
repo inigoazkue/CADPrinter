@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CAD Printer</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <!-- ── Sidebar ───────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span class="logo">🖨 CAD Printer</span>
+      <button class="btn-icon btn-primary" id="btn-new-job" title="Nuevo trabajo">+</button>
+    </div>
+    <div class="sidebar-list" id="job-list">
+      <p class="empty-hint">Sin trabajos</p>
+    </div>
+  </aside>
+
+  <!-- ── Main panel ────────────────────────────────────────────── -->
+  <main id="main">
+    <div id="empty-state" class="empty-state">
+      <div class="empty-icon">📄</div>
+      <h2>Ningún trabajo seleccionado</h2>
+      <p>Crea un trabajo nuevo o selecciona uno existente de la lista.</p>
+      <button class="btn btn-primary" onclick="openNewJobModal()">+ Nuevo trabajo</button>
+    </div>
+
+    <div id="job-detail" class="hidden">
+      <!-- Job header -->
+      <div class="job-header">
+        <div class="job-title-row">
+          <h1 id="job-name" class="job-name" contenteditable="true" spellcheck="false"></h1>
+          <span id="job-format-badge" class="format-badge"></span>
+        </div>
+        <div class="job-actions">
+          <button class="btn btn-ghost" id="btn-change-format" title="Cambiar formato">Formato</button>
+          <button class="btn btn-ghost" id="btn-activate-job" title="Activar para impresiones entrantes">Activar</button>
+          <button class="btn btn-danger" id="btn-delete-job">Borrar trabajo</button>
+          <button class="btn btn-primary" id="btn-export-job">⬇ Exportar PDF</button>
+        </div>
+      </div>
+
+      <!-- Sheets container -->
+      <div id="sheets-container"></div>
+
+      <!-- Add sheet button -->
+      <div class="add-sheet-row">
+        <button class="btn btn-ghost btn-add-sheet" id="btn-add-sheet">+ Nueva hoja</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── Modal: Nuevo trabajo ──────────────────────────────────── -->
+  <div id="modal-new-job" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Nuevo trabajo</h2>
+        <button class="btn-close" onclick="closeNewJobModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <label>Nombre
+          <input type="text" id="new-job-name" placeholder="Panel eléctrico-01" autocomplete="off" />
+        </label>
+        <label>Formato de hoja
+          <select id="new-job-format">
+            <option value="A3">A3 (297 × 420 mm)</option>
+            <option value="A4">A4 (210 × 297 mm)</option>
+          </select>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="new-job-activate" checked />
+          Activar como trabajo actual (las nuevas impresiones irán aquí)
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeNewJobModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="submitNewJob()">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Cambiar formato ────────────────────────────────── -->
+  <div id="modal-format" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>Cambiar formato</h2>
+        <button class="btn-close" onclick="closeFormatModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <label>Formato de hoja
+          <select id="format-select">
+            <option value="A3">A3 (297 × 420 mm)</option>
+            <option value="A4">A4 (210 × 297 mm)</option>
+          </select>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeFormatModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="submitFormat()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Toast ─────────────────────────────────────────────────── -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
