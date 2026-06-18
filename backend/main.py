@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import shutil
-import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -510,33 +509,35 @@ def _delete_print_files(filename: Optional[str], preview_path: Optional[str]):
 
 
 # ── CUPS user management ──────────────────────────────────────────────────────
+# No passwords needed: printer uses auth-info-required=username only.
+# Windows sends the login username automatically; cups-pdf routes to per-user
+# subdirs via Out /var/spool/cups-pdf/${User}. Users appear automatically on
+# first print. Management here is just listing/removing known users.
 
-_CUPS_PASSWD = Path("/etc/cups/passwd.md5")
+_CUPS_SPOOL = Path("/var/spool/cups-pdf")
+_NON_USER_DIRS = {"SPOOL", "ANONYMOUS"}
 
 
 def _cups_list_users() -> list:
-    if not _CUPS_PASSWD.exists():
-        return []
+    """Users from the cups-pdf spool subdirs + user_active_jobs table."""
+    users = set()
+    # From spool directories
     try:
-        return [
-            line.split(':')[0]
-            for line in _CUPS_PASSWD.read_text().splitlines()
-            if line.strip()
-        ]
+        for d in _CUPS_SPOOL.iterdir():
+            if d.is_dir() and d.name not in _NON_USER_DIRS:
+                users.add(d.name)
     except Exception:
-        return []
-
-
-def _cups_run(args: list, stdin: str = "") -> tuple[bool, str]:
+        pass
+    # From user_active_jobs (users who have printed at least once)
+    conn = db.get_db()
     try:
-        proc = subprocess.run(
-            args, input=stdin, capture_output=True, text=True, timeout=5
-        )
-        return proc.returncode == 0, (proc.stderr or proc.stdout).strip()
-    except FileNotFoundError:
-        return False, "lppasswd ez da aurkitu"
-    except Exception as e:
-        return False, str(e)
+        for row in conn.execute("SELECT DISTINCT source_user FROM user_active_jobs WHERE source_user IS NOT NULL"):
+            users.add(row[0])
+        for row in conn.execute("SELECT DISTINCT source_user FROM jobs WHERE source_user IS NOT NULL"):
+            users.add(row[0])
+    finally:
+        conn.close()
+    return sorted(users)
 
 
 @app.get("/api/cups-users")
@@ -544,29 +545,17 @@ def list_cups_users():
     return {"users": _cups_list_users()}
 
 
-class CupsUserCreate(BaseModel):
-    username: str
-    password: str
-
-
-@app.post("/api/cups-users", status_code=201)
-def create_cups_user(body: CupsUserCreate):
-    username = body.username.strip()
-    if not username or not body.password:
-        raise HTTPException(400, "Erabiltzailea eta pasahitza beharrezkoak dira")
-    ok, err = _cups_run(['lppasswd', '-a', username],
-                        stdin=f"{body.password}\n{body.password}\n")
-    if not ok:
-        raise HTTPException(500, err or "Ezin da erabiltzailea sortu")
-    return {"ok": True, "username": username}
-
-
 @app.delete("/api/cups-users/{username}")
-def delete_cups_user(username: str):
-    ok, err = _cups_run(['lppasswd', '-x', username])
-    if not ok:
-        raise HTTPException(500, err or "Ezin da erabiltzailea ezabatu")
-    return {"ok": True}
+async def delete_cups_user(username: str):
+    """Remove all job assignments for a user (does not delete jobs themselves)."""
+    conn = db.get_db()
+    try:
+        conn.execute("DELETE FROM user_active_jobs WHERE source_user = ?", (username,))
+        conn.commit()
+        await broadcast("users_changed", {})
+        return {"ok": True}
+    finally:
+        conn.close()
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────

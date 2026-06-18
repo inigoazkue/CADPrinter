@@ -42,7 +42,6 @@ const API = {
   printPreviewUrl: (id)         => `/api/prints/${id}/preview`,
 
   getCupsUsers:    ()           => API.request('GET', '/cups-users'),
-  addCupsUser:     (u, p)       => API.request('POST', '/cups-users', { username: u, password: p }),
   deleteCupsUser:  (u)          => API.request('DELETE', `/cups-users/${encodeURIComponent(u)}`),
 
   async uploadPrint(sheetId, file) {
@@ -489,8 +488,6 @@ async function submitFormat() {
 
 /* ── Modal: Inprimagailu erabiltzaileak ─────────────────────────────────── */
 async function openUsersModal() {
-  document.getElementById('new-cups-username').value = '';
-  document.getElementById('new-cups-password').value = '';
   document.getElementById('modal-users').classList.remove('hidden');
   await loadCupsUsers();
 }
@@ -531,19 +528,6 @@ async function loadCupsUsers() {
   }
 }
 
-async function submitAddCupsUser() {
-  const username = document.getElementById('new-cups-username').value.trim();
-  const password = document.getElementById('new-cups-password').value;
-  if (!username) { document.getElementById('new-cups-username').focus(); return; }
-  if (!password) { document.getElementById('new-cups-password').focus(); return; }
-  await safeCall(async () => {
-    await API.addCupsUser(username, password);
-    document.getElementById('new-cups-username').value = '';
-    document.getElementById('new-cups-password').value = '';
-    await loadCupsUsers();
-    showToast(`"${username}" gehituta`);
-  });
-}
 
 /* ── Wire up static buttons ─────────────────────────────────────────────── */
 function wireButtons() {
@@ -682,7 +666,6 @@ window.submitNewJob     = submitNewJob;
 window.closeFormatModal = closeFormatModal;
 window.submitFormat     = submitFormat;
 window.closeUsersModal  = closeUsersModal;
-window.submitAddCupsUser = submitAddCupsUser;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {
