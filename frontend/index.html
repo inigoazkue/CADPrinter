@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CAD Printer</title>
+  <link rel="icon" href="/img/Eitb_corp.svg.png" type="image/png" />
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -11,8 +12,14 @@
   <!-- ── Sidebar ───────────────────────────────────────────────── -->
   <aside id="sidebar">
     <div class="sidebar-header">
-      <span class="logo">🖨 CAD Printer</span>
-      <button class="btn-icon btn-primary" id="btn-new-job" title="Nuevo trabajo">+</button>
+      <div class="sidebar-brand">
+        <img src="/img/Eitb_corp.svg.png" class="eitb-logo" alt="EITB" />
+        <div class="brand-text">
+          <span class="logo">CAD Printer</span>
+          <span class="version-tag">v1.0.0</span>
+        </div>
+      </div>
+      <button class="btn-icon" id="btn-new-job" title="Nuevo trabajo">+</button>
     </div>
     <div class="sidebar-list" id="job-list">
       <p class="empty-hint">Sin trabajos</p>
@@ -24,7 +31,7 @@
     <div id="empty-state" class="empty-state">
       <div class="empty-icon">📄</div>
       <h2>Ningún trabajo seleccionado</h2>
-      <p>Crea un trabajo nuevo o selecciona uno existente de la lista.</p>
+      <p>Crea un trabajo nuevo o selecciona uno de la lista.</p>
       <button class="btn btn-primary" onclick="openNewJobModal()">+ Nuevo trabajo</button>
     </div>
 
@@ -36,10 +43,10 @@
           <span id="job-format-badge" class="format-badge"></span>
         </div>
         <div class="job-actions">
-          <button class="btn btn-ghost" id="btn-change-format" title="Cambiar formato">Formato</button>
-          <button class="btn btn-ghost" id="btn-activate-job" title="Activar para impresiones entrantes">Activar</button>
-          <button class="btn btn-danger" id="btn-delete-job">Borrar trabajo</button>
-          <button class="btn btn-primary" id="btn-export-job">⬇ Exportar PDF</button>
+          <button class="btn btn-ghost" id="btn-change-format">Formato</button>
+          <button class="btn btn-ghost" id="btn-activate-job">Activar</button>
+          <button class="btn btn-danger" id="btn-delete-job">Borrar</button>
+          <button class="btn btn-primary" id="btn-export-job">🖨 Imprimir</button>
         </div>
       </div>
 
@@ -72,7 +79,7 @@
         </label>
         <label class="checkbox-label">
           <input type="checkbox" id="new-job-activate" checked />
-          Activar como trabajo actual (las nuevas impresiones irán aquí)
+          Activar como trabajo actual
         </label>
       </div>
       <div class="modal-footer">

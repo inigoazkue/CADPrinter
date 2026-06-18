@@ -29,7 +29,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 PRINTS_DIR = PROJECT_ROOT / PRINTS_DIR_RELATIVE
 
 
-def notify_server(api_url: str, filepath: str, filename: str, original_name: str):
+def notify_server(api_url: str, filepath: str, filename: str, original_name: str) -> bool:
     payload = json.dumps({
         "filepath": filepath,
         "filename": filename,
@@ -45,8 +45,10 @@ def notify_server(api_url: str, filepath: str, filename: str, original_name: str
         with urllib.request.urlopen(req, timeout=10) as resp:
             body = resp.read().decode()
             print(f"[watcher] Server accepted: {body}")
+            return True
     except urllib.error.URLError as e:
         print(f"[watcher] Failed to notify server: {e}", file=sys.stderr)
+        return False
 
 
 def wait_for_stable(path: str, stable_secs: float = 1.0, timeout: float = 30.0):
@@ -95,7 +97,12 @@ class PDFHandler(FileSystemEventHandler):
             print(f"[watcher] Copy failed: {e}", file=sys.stderr)
             return
 
-        notify_server(self.api_url, dest_path, dest_name, original_name)
+        if notify_server(self.api_url, dest_path, dest_name, original_name):
+            try:
+                os.unlink(src)
+                print(f"[watcher] Spool deleted: {src}")
+            except OSError as e:
+                print(f"[watcher] Could not delete spool file: {e}", file=sys.stderr)
 
 
 def main():
