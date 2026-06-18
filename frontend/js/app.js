@@ -246,7 +246,7 @@ function renderSheet(sheet, fmt) {
     uploadInput.value = '';
   });
 
-  const uploadBtn = el('button', 'btn-upload-here', '⬆ Añadir PDF a mano');
+  const uploadBtn = el('button', 'btn-upload-here', '⬆ PDF bat igo eskuz');
   uploadBtn.addEventListener('click', () => uploadInput.click());
 
   const actions = el('div', 'sheet-actions');
@@ -265,33 +265,41 @@ function renderSheet(sheet, fmt) {
   setupSheetDropTarget(grid, sheet.id);
 
   for (const p of sheet.prints) {
-    grid.appendChild(renderPrint(p, sheet.id));
+    grid.appendChild(renderPrint(p, sheet.id, fmt));
   }
 
   if (!sheet.prints.length) {
-    const hint = el('p', '', '<span style="color:var(--text-muted);font-size:13px">Sin capas. Arrastra un PDF aquí o usa ⬆ Añadir PDF a mano.</span>');
+    const hint = el('p', '', '<span style="color:var(--text-muted);font-size:13px">Sin capas. Arrastra un PDF aquí o usa ⬆ PDF bat igo eskuz.</span>');
     grid.appendChild(hint);
   }
 
-  body.appendChild(grid);
+  const printsCol = el('div', 'sheet-prints-col');
+  printsCol.appendChild(grid);
+  body.appendChild(printsCol);
+
+  // Preview column (right side)
+  const previewCol = el('div', 'sheet-preview-col');
+  const previewLabel = el('div', 'sheet-preview-label', 'Vista previa');
+  previewCol.appendChild(previewLabel);
 
   if (sheet.prints.some(p => p.enabled)) {
-    const previewSec = el('div', 'sheet-preview-section');
-    previewSec.innerHTML = '<div class="sheet-preview-label">Vista previa combinada</div>';
     const img = el('img', 'sheet-preview-img');
     img.alt = 'Vista previa';
     img.src = API.sheetPreviewUrl(sheet.id);
     img.onerror = () => img.style.display = 'none';
-    previewSec.appendChild(img);
-    body.appendChild(previewSec);
+    previewCol.appendChild(img);
+  } else {
+    previewCol.appendChild(el('div', 'sheet-preview-empty', 'Sin capas activas'));
   }
+
+  body.appendChild(previewCol);
 
   card.appendChild(header);
   card.appendChild(body);
   return card;
 }
 
-function renderPrint(p, sheetId) {
+function renderPrint(p, sheetId, jobFmt) {
   const thumb = el('div', 'print-thumb' + (p.enabled ? '' : ' disabled'));
   thumb.dataset.printId = p.id;
   thumb.draggable = true;
@@ -325,6 +333,13 @@ function renderPrint(p, sheetId) {
   thumb.appendChild(img);
   thumb.appendChild(footer);
   thumb.appendChild(controls);
+
+  // Format mismatch warning badge
+  if (p.format && jobFmt && p.format !== jobFmt) {
+    const warn = el('div', 'format-warn', `⚠ ${p.format}`);
+    warn.title = `Este PDF es ${p.format} pero el trabajo es ${jobFmt}`;
+    thumb.appendChild(warn);
+  }
 
   thumb.addEventListener('dragstart', e => {
     e.dataTransfer.setData('text/plain', JSON.stringify({ printId: p.id, fromSheetId: sheetId }));

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS prints (
     filename      TEXT    NOT NULL,
     original_name TEXT,
     preview_path  TEXT,
+    format        TEXT,
     order_num     INTEGER NOT NULL DEFAULT 0,
     enabled       INTEGER NOT NULL DEFAULT 1,
     received_at   TEXT    NOT NULL DEFAULT (datetime('now')),
@@ -48,6 +49,10 @@ def init_db():
     os.makedirs(PREVIEWS_DIR, exist_ok=True)
     conn = get_db()
     conn.executescript(SCHEMA)
+    # Migration: add format column to existing installs
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(prints)")]
+    if 'format' not in cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN format TEXT")
     conn.commit()
     conn.close()
 

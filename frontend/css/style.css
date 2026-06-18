@@ -373,7 +373,33 @@ body {
   background: rgba(33,42,47,.03);
 }
 
-.sheet-body { padding: 16px; }
+.sheet-body {
+  display: flex;
+  gap: 0;
+}
+
+.sheet-prints-col {
+  flex: 1;
+  min-width: 0;
+  padding: 16px;
+}
+
+.sheet-preview-col {
+  width: 220px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  padding: 14px 16px;
+  background: #FAFAF7;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sheet-preview-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
 
 /* ── Prints grid ─────────────────────────────────────────────────────────── */
 .prints-grid {
@@ -459,24 +485,32 @@ body {
 .ctrl-btn.toggle { color: var(--text-muted); }
 .ctrl-btn.toggle.on { color: var(--success); }
 
-/* ── Sheet preview ───────────────────────────────────────────────────────── */
-.sheet-preview-section {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
+/* ── Format mismatch badge ───────────────────────────────────────────────── */
+.format-warn {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  background: rgba(217,119,6,.88);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+  padding: 2px 0;
+  letter-spacing: 0.3px;
+  pointer-events: none;
 }
 
+/* ── Sheet preview ───────────────────────────────────────────────────────── */
 .sheet-preview-label {
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-muted);
-  margin-bottom: 10px;
 }
 
 .sheet-preview-img {
-  max-width: 360px;
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--radius);

@@ -311,13 +311,13 @@ async def upload_print(sheet_id: int, file: UploadFile = File(...)):
         sheet = conn.execute("SELECT * FROM sheets WHERE id = ?", (sheet_id,)).fetchone()
         if not sheet:
             raise HTTPException(404, "Sheet not found")
-        print_id, filename, preview_path = _store_print_file(file, sheet["job_id"])
+        print_id, filename, preview_path, print_fmt = _store_print_file(file, sheet["job_id"])
         order = _next_print_order(conn, sheet_id)
         conn.execute(
-            """INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num, format)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (print_id, sheet["job_id"], sheet_id, filename,
-             file.filename, preview_path, order)
+             file.filename, preview_path, order, print_fmt)
         )
         conn.commit()
         row = dict(conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone())
@@ -422,13 +422,14 @@ async def internal_new_print(body: InternalPrint):
         pdf_utils.generate_preview(body.filepath, preview_path)
         if not os.path.exists(preview_path):
             preview_path = None
+        print_fmt = pdf_utils.detect_format(body.filepath)
 
         order = _next_print_order(conn, sheet_id)
         conn.execute(
-            """INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num, format)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (print_id, job_id, sheet_id, body.filename,
-             body.original_name or body.filename, preview_path, order)
+             body.original_name or body.filename, preview_path, order, print_fmt)
         )
         conn.commit()
         await broadcast("print_added", {"job_id": job_id, "sheet_id": sheet_id})
@@ -455,7 +456,7 @@ def _next_print_order(conn, sheet_id: int) -> int:
     return (row[0] or 0) + 1
 
 
-def _store_print_file(file: UploadFile, job_id: int) -> tuple[int, str, Optional[str]]:
+def _store_print_file(file: UploadFile, job_id: int) -> tuple[int, str, Optional[str], str]:
     print_id = _new_id()
     ext = Path(file.filename).suffix or ".pdf"
     filename = f"{print_id}{ext}"
@@ -464,7 +465,8 @@ def _store_print_file(file: UploadFile, job_id: int) -> tuple[int, str, Optional
         shutil.copyfileobj(file.file, f)
     preview_path = str(db.PREVIEWS_DIR / f"{print_id}.png")
     ok = pdf_utils.generate_preview(pdf_path, preview_path)
-    return print_id, filename, preview_path if ok else None
+    fmt = pdf_utils.detect_format(pdf_path)
+    return print_id, filename, preview_path if ok else None, fmt
 
 
 def _delete_print_files(filename: Optional[str], preview_path: Optional[str]):
