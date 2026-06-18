@@ -42,8 +42,11 @@ else
 fi
 
 PIP="$PROJECT_DIR/venv/bin/pip"
-$PIP install --quiet --upgrade pip $PIP_PROXY
-$PIP install --quiet -r "$PROJECT_DIR/requirements.txt" $PIP_PROXY
+# --trusted-host necesario cuando el proxy corporativo hace inspección SSL
+PIP_TRUSTED="--trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org --trusted-host mupdf.com"
+
+$PIP install --quiet --upgrade pip $PIP_PROXY $PIP_TRUSTED
+$PIP install --quiet -r "$PROJECT_DIR/requirements.txt" $PIP_PROXY $PIP_TRUSTED
 echo "      OK"
 
 # ── Directorios de datos ──────────────────────────────────────────────────────
