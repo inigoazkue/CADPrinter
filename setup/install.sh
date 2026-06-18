@@ -16,7 +16,17 @@ echo ""
 # ── Sistema ──────────────────────────────────────────────────────────────────
 echo "[1/6] Instalando paquetes del sistema..."
 apt-get update -q
-apt-get install -y python3 python3-pip python3-venv cups cups-pdf ghostscript
+apt-get install -y python3 python3-pip python3-venv cups ghostscript
+
+# cups-pdf se llama diferente según la versión de Ubuntu
+if apt-get install -y cups-pdf 2>/dev/null; then
+  echo "      cups-pdf instalado"
+elif apt-get install -y printer-driver-cups-pdf 2>/dev/null; then
+  echo "      printer-driver-cups-pdf instalado"
+else
+  echo "AVISO: No se encontró cups-pdf. Instálalo manualmente:"
+  echo "       apt-cache search cups | grep -i pdf"
+fi
 
 # ── Entorno Python ────────────────────────────────────────────────────────────
 echo "[2/6] Creando entorno virtual Python..."
