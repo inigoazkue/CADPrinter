@@ -31,8 +31,19 @@ fi
 # ── Entorno Python ────────────────────────────────────────────────────────────
 echo "[2/6] Creando entorno virtual Python..."
 python3 -m venv "$PROJECT_DIR/venv"
-"$PROJECT_DIR/venv/bin/pip" install --quiet --upgrade pip
-"$PROJECT_DIR/venv/bin/pip" install --quiet -r "$PROJECT_DIR/requirements.txt"
+
+# Construir flags de proxy para pip (coge el valor del entorno o del perfil del usuario)
+PROXY_URL="${https_proxy:-${http_proxy:-}}"
+if [ -n "$PROXY_URL" ]; then
+  PIP_PROXY="--proxy $PROXY_URL"
+  echo "      Usando proxy: $PROXY_URL"
+else
+  PIP_PROXY=""
+fi
+
+PIP="$PROJECT_DIR/venv/bin/pip"
+$PIP install --quiet --upgrade pip $PIP_PROXY
+$PIP install --quiet -r "$PROJECT_DIR/requirements.txt" $PIP_PROXY
 echo "      OK"
 
 # ── Directorios de datos ──────────────────────────────────────────────────────
