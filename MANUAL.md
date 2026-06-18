@@ -9,10 +9,10 @@ CAD Printer es una herramienta para gestionar impresiones de AutoCAD que no cabe
 Abre el navegador y ve a:
 
 ```
-http://cadprinter.mir.etb
+http://<IP-del-servidor>:8080
 ```
 
-La aplicación funciona en red local. No requiere contraseña.
+Pregunta la IP del servidor a tu administrador. La aplicación funciona en red local y no requiere contraseña.
 
 ---
 
@@ -20,10 +20,10 @@ La aplicación funciona en red local. No requiere contraseña.
 
 | Concepto | Descripción |
 |---|---|
-| **Trabajo** | Agrupa todo lo relacionado con un rótulo o panel. Genera un PDF final. |
-| **Hoja** | Una página del PDF final. Un trabajo puede tener varias hojas. |
-| **Capa** | Un PDF recibido desde AutoCAD o subido manualmente. Varias capas se superponen en una hoja. |
-| **Trabajo activo** | El trabajo marcado con el punto verde. Las impresiones que llegan desde AutoCAD van aquí automáticamente. |
+| **Lan** (Trabajo) | Agrupa todo lo relacionado con un rótulo o panel. Genera un PDF final. |
+| **Orri** (Hoja) | Una página del PDF final. Un trabajo puede tener varias hojas. |
+| **Geruza** (Capa) | Un PDF recibido desde AutoCAD o subido manualmente. Varias capas se superponen en una hoja. |
+| **Lan aktiboa** (Trabajo activo) | El trabajo marcado con el punto verde. Las impresiones que llegan desde AutoCAD van aquí automáticamente. |
 
 ---
 
@@ -37,11 +37,13 @@ Esto solo hay que hacerlo una vez por equipo.
 2. Haz clic en **Agregar una impresora**
 3. Selecciona **"La impresora deseada no está en la lista"**
 4. Elige **"Seleccionar una impresora compartida por nombre"**
-5. Escribe la dirección:
+5. Escribe la dirección del servidor (sustituye la IP por la de tu servidor):
 
    ```
-   http://cadprinter.mir.etb:631/printers/CADPrinter
+   http://<IP-del-servidor>:631/printers/CADPrinter
    ```
+
+   Ejemplo: `http://192.168.1.50:631/printers/CADPrinter`
 
 6. Haz clic en **Siguiente**
 7. Cuando pida el driver, elige:
@@ -63,8 +65,8 @@ En la barra lateral izquierda, pulsa el botón **+** (esquina superior derecha d
 
 - Escribe el nombre del trabajo (por ejemplo: `Panel-CC-01`)
 - Selecciona el formato: **A3** o **A4**
-- Deja marcada la opción "Activar como trabajo actual"
-- Pulsa **Crear**
+- Deja marcada la opción "Aktibatu lan aktibo gisa"
+- Pulsa **Sortu**
 
 El trabajo nuevo aparece en la lista y se marca como activo (punto verde).
 
@@ -87,11 +89,11 @@ Cada PDF recibido aparece como una miniatura en la primera hoja del trabajo acti
 
 **Para eliminar una capa:** pasa el ratón sobre la miniatura y pulsa **✕**.
 
-**Aviso de formato:** si una capa tiene un formato diferente al del trabajo (por ejemplo, un PDF A4 en un trabajo A3), aparece un badge naranja **⚠ A4** sobre la miniatura.
+**Aviso de formato:** si una capa tiene un formato diferente al del trabajo (por ejemplo, un PDF A4 en un trabajo A3), aparece un badge naranja **⚠ A4** sobre la miniatura. Al exportar, la capa se escalará automáticamente al formato del trabajo.
 
 ### 4. Añadir una hoja nueva
 
-En el panel principal del trabajo, pulsa **+ Nueva hoja** al final de la lista.
+En el panel principal del trabajo, pulsa **+ Orri berria** al final de la lista.
 
 ### 5. Subir un PDF manualmente
 
@@ -99,7 +101,7 @@ Dentro de cualquier hoja, pulsa **⬆ PDF bat igo eskuz** y selecciona el ficher
 
 ### 6. Imprimir el resultado final
 
-Cuando todas las capas estén organizadas, pulsa el botón **🖨 Imprimir** en la cabecera del trabajo.
+Cuando todas las capas estén organizadas, pulsa el botón **🖨 Inprimatu** en la cabecera del trabajo.
 
 Se abre el PDF combinado en una nueva pestaña del navegador. Desde ahí, usa **Ctrl+P** para imprimir en la impresora física.
 
@@ -112,7 +114,7 @@ Al pasar el ratón sobre un trabajo en la lista, aparecen tres botones:
 | Botón | Acción |
 |---|---|
 | Icono impresora | Imprime directamente el trabajo (abre PDF en nueva pestaña) |
-| Icono lapiz | Renombra el trabajo |
+| Icono lápiz | Renombra el trabajo |
 | Icono papelera | Borra el trabajo y todos sus PDFs |
 
 ---
@@ -135,7 +137,7 @@ A la derecha de cada hoja se muestra la **vista previa combinada** de todas las 
 
 ## Cambiar el formato de un trabajo
 
-En la cabecera del trabajo, pulsa **Formato** y selecciona A3 o A4. El formato determina el tamaño de página del PDF exportado.
+En la cabecera del trabajo, pulsa **Formatua** y selecciona A3 o A4. Si alguna capa tiene un formato distinto al nuevo formato del trabajo, aparecerá el aviso naranja automáticamente.
 
 ---
 
@@ -143,7 +145,7 @@ En la cabecera del trabajo, pulsa **Formato** y selecciona A3 o A4. El formato d
 
 **Las impresiones no llegan a la aplicación**
 - Comprueba que la impresora CADPrinter está seleccionada en AutoCAD
-- Verifica que el servidor está encendido y accesible en `http://cadprinter.mir.etb`
+- Verifica que el servidor está encendido y accesible en `http://<IP>:8080`
 - Consulta con el administrador: `journalctl -fu cad-watcher`
 
 **El PDF exportado está en blanco**

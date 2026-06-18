@@ -16,12 +16,9 @@ Ubuntu Server — CUPS + cups-pdf
 watcher.py (systemd)
     │  detecta el fichero, lo copia a data/prints/, llama API
     ▼
-FastAPI (backend/main.py, systemd)
+FastAPI (backend/main.py, systemd)  →  puerto 8080
     │  gestiona jobs/sheets/prints en SQLite
     │  genera previews PNG con PyMuPDF
-    ▼
-nginx (reverse proxy, puerto 80)
-    │
     ▼
 Navegador web (frontend vanilla JS)
     ←→ SSE (Server-Sent Events) para actualizaciones en tiempo real
@@ -36,7 +33,6 @@ Navegador web (frontend vanilla JS)
 | PDF | PyMuPDF (pymupdf) | Previews PNG, overlay, exportación |
 | Impresora virtual | CUPS + cups-pdf | Recibe impresiones desde Windows vía IPP |
 | Monitor spool | watchdog | Detecta PDFs nuevos en el spool de CUPS |
-| Reverse proxy | nginx | Puerto 80, buffering SSE desactivado |
 | Frontend | Vanilla JS + HTML/CSS | Sin frameworks, drag & drop nativo |
 
 ### Modelo de datos
@@ -66,7 +62,6 @@ El campo `is_current` en `jobs` indica el trabajo activo — las impresiones ent
 - cups-pdf o printer-driver-cups-pdf
 - ghostscript
 - python3-pymupdf (vía apt)
-- nginx (para reverse proxy, opcional pero recomendado)
 - Red local (los clientes Windows acceden por IPP a puerto 631)
 
 ---
@@ -103,45 +98,21 @@ El instalador realiza automáticamente:
 - Creación de directorios de datos (`data/prints/`, `data/previews/`)
 - Registro e inicio de servicios systemd (`cad-printer`, `cad-watcher`)
 
-### 3. Configurar nginx (recomendado)
-
-```bash
-sudo apt-get install -y nginx
-```
-
-Crear `/etc/nginx/sites-available/cadprinter`:
-
-```nginx
-server {
-    listen 80;
-    server_name cadprinter.tudominio.lan;
-
-    location /api/events {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_set_header Connection '';
-        proxy_http_version 1.1;
-        chunked_transfer_encoding on;
-    }
-
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-    }
-}
-```
-
-```bash
-sudo ln -s /etc/nginx/sites-available/cadprinter /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-> **Importante:** `proxy_buffering off` es imprescindible para que funcionen los Server-Sent Events (actualizaciones en tiempo real del navegador).
-
-### 4. Añadir la impresora en Windows
+### 3. Añadir la impresora en Windows
 
 Ver [MANUAL.md](MANUAL.md) — sección "Configurar impresora en Windows".
+
+---
+
+## Acceso a la aplicación
+
+Una vez instalado, la interfaz web es accesible en:
+
+```
+http://<IP-del-servidor>:8080
+```
+
+Ejemplo: `http://192.168.1.50:8080`
 
 ---
 
@@ -233,18 +204,15 @@ No es necesario reinstalar dependencias salvo que cambie `requirements.txt`.
 
 ---
 
-## Proxy SSL corporativo
-
-Si `pip install` falla por certificados SSL del proxy, el instalador lo gestiona automáticamente pasando `--trusted-host` a pip. PyMuPDF se instala vía `apt` (`python3-pymupdf`) para evitar compilación desde fuente.
-
-Si el proxy no afecta al tráfico interno (nombre de dominio local), CUPS funciona sin configuración de proxy adicional.
-
----
-
 ## Puertos
 
 | Puerto | Servicio | Acceso |
 |---|---|---|
-| 80 | nginx (UI web) | Red local |
-| 631 | CUPS (IPP) | Red local (para impresoras Windows) |
-| 8080 | uvicorn (interno) | Solo localhost |
+| 8080 | uvicorn (UI web + API) | Red local |
+| 631 | CUPS (IPP) | Red local (impresoras Windows) |
+
+---
+
+## Proxy SSL corporativo
+
+Si `pip install` falla por certificados SSL del proxy, el instalador lo gestiona automáticamente pasando `--trusted-host` a pip. PyMuPDF se instala vía `apt` (`python3-pymupdf`) para evitar compilación desde fuente.
