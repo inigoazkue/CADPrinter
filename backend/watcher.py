@@ -29,11 +29,22 @@ PROJECT_ROOT = Path(__file__).parent.parent
 PRINTS_DIR = PROJECT_ROOT / PRINTS_DIR_RELATIVE
 
 
-def notify_server(api_url: str, filepath: str, filename: str, original_name: str) -> bool:
+def parse_source_user(filename: str):
+    """Split 'username_docname.pdf' → ('username', 'docname.pdf').
+    Returns (None, filename) if no prefix is found (Label 1 not configured)."""
+    parts = filename.split('_', 1)
+    if len(parts) == 2 and parts[0]:
+        return parts[0], parts[1]
+    return None, filename
+
+
+def notify_server(api_url: str, filepath: str, filename: str, original_name: str,
+                  source_user: str = None) -> bool:
     payload = json.dumps({
         "filepath": filepath,
         "filename": filename,
         "original_name": original_name,
+        "source_user": source_user,
     }).encode()
     req = urllib.request.Request(
         f"{api_url}/api/internal/new-print",
@@ -86,18 +97,19 @@ class PDFHandler(FileSystemEventHandler):
 
         # Copy to data/prints/
         original_name = Path(src).name
-        dest_name = f"{int(time.time() * 1000)}_{original_name}"
+        source_user, clean_name = parse_source_user(original_name)
+        dest_name = f"{int(time.time() * 1000)}_{clean_name}"
         PRINTS_DIR.mkdir(parents=True, exist_ok=True)
         dest_path = str(PRINTS_DIR / dest_name)
 
         try:
             shutil.copy2(src, dest_path)
-            print(f"[watcher] Copied to {dest_path}")
+            print(f"[watcher] Copied to {dest_path} (user={source_user})")
         except OSError as e:
             print(f"[watcher] Copy failed: {e}", file=sys.stderr)
             return
 
-        if notify_server(self.api_url, dest_path, dest_name, original_name):
+        if notify_server(self.api_url, dest_path, dest_name, clean_name, source_user):
             try:
                 os.unlink(src)
                 print(f"[watcher] Spool deleted: {src}")

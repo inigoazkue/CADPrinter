@@ -202,6 +202,25 @@ body {
 .jc-btn.jc-btn-danger { color: rgba(220,100,80,.7); }
 .jc-btn.jc-btn-danger:hover { background: rgba(192,57,43,.25); color: #fca5a5; }
 
+/* ── User group headers in sidebar ──────────────────────────────────────── */
+.user-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.35);
+  border-top: 1px solid rgba(255,255,255,.07);
+  margin-top: 6px;
+}
+
+.user-group-header:first-child { margin-top: 0; border-top: none; }
+.user-group-icon { font-size: 9px; opacity: 0.6; }
+.user-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .empty-hint {
   color: var(--sidebar-muted);
   font-size: 12px;

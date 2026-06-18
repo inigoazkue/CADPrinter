@@ -4,6 +4,7 @@ const state = {
   selectedJobId: null,
   selectedJob: null,
   currentJobId: null,
+  userActiveJobs: {},  // { source_user: job_id }
 };
 
 /* ── API ───────────────────────────────────────────────────────────────── */
@@ -23,6 +24,7 @@ const API = {
   },
 
   getJobs:         ()           => API.request('GET', '/jobs'),
+  activateUserJob: (user, id)  => API.request('POST', `/users/${encodeURIComponent(user)}/jobs/${id}/activate`),
   getJob:          (id)         => API.request('GET', `/jobs/${id}`),
   createJob:       (name, fmt)  => API.request('POST', '/jobs', { name, format: fmt }),
   updateJob:       (id, data)   => API.request('PATCH', `/jobs/${id}`, data),
@@ -84,7 +86,9 @@ async function safeCall(fn) {
 
 /* ── Load & refresh ────────────────────────────────────────────────────── */
 async function loadJobs() {
-  state.jobs = await API.getJobs();
+  const resp = await API.getJobs();
+  state.jobs = resp.jobs;
+  state.userActiveJobs = resp.userActiveJobs || {};
   state.currentJobId = state.jobs.find(j => j.is_current)?.id ?? null;
   renderSidebar();
 }
@@ -101,6 +105,49 @@ async function refresh() {
 }
 
 /* ── Sidebar ────────────────────────────────────────────────────────────── */
+function isJobActive(job) {
+  if (job.source_user) return state.userActiveJobs[job.source_user] === job.id;
+  return !!job.is_current;
+}
+
+function renderJobCard(job) {
+  const active = isJobActive(job);
+  const card = el('div', 'job-card' +
+    (job.id === state.selectedJobId ? ' selected' : '') +
+    (active ? ' active-job' : ''));
+
+  const main = el('div', 'job-card-main');
+  main.innerHTML = `
+    <div class="job-card-indicator" title="Lan aktiboa"></div>
+    <div class="job-card-info">
+      <div class="job-card-name">${escHtml(job.name)}</div>
+      <div class="job-card-meta">${job.sheet_count} orri · ${job.print_count} geruza</div>
+      <span class="format-pill">${job.format}</span>
+    </div>`;
+  main.addEventListener('click', () => selectJob(job.id));
+
+  const btns = el('div', 'job-card-btns');
+
+  const printBtn = el('button', 'jc-btn', iconPrinter());
+  printBtn.title = 'Lana inprimatu';
+  printBtn.addEventListener('click', e => { e.stopPropagation(); printJob(job.id); });
+
+  const renameBtn = el('button', 'jc-btn', iconPencil());
+  renameBtn.title = 'Berrizendatu';
+  renameBtn.addEventListener('click', e => { e.stopPropagation(); renameJob(job.id, job.name); });
+
+  const deleteBtn = el('button', 'jc-btn jc-btn-danger', iconTrash());
+  deleteBtn.title = 'Lana ezabatu';
+  deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteJobSidebar(job.id, job.name); });
+
+  btns.appendChild(printBtn);
+  btns.appendChild(renameBtn);
+  btns.appendChild(deleteBtn);
+  card.appendChild(main);
+  card.appendChild(btns);
+  return card;
+}
+
 function renderSidebar() {
   const list = document.getElementById('job-list');
   if (!state.jobs.length) {
@@ -109,41 +156,34 @@ function renderSidebar() {
   }
   list.innerHTML = '';
 
+  // Group by source_user
+  const userGroups = {};
+  const noUserJobs = [];
   for (const job of state.jobs) {
-    const card = el('div', 'job-card' +
-      (job.id === state.selectedJobId ? ' selected' : '') +
-      (job.is_current ? ' active-job' : ''));
+    if (job.source_user) {
+      if (!userGroups[job.source_user]) userGroups[job.source_user] = [];
+      userGroups[job.source_user].push(job);
+    } else {
+      noUserJobs.push(job);
+    }
+  }
 
-    const main = el('div', 'job-card-main');
-    main.innerHTML = `
-      <div class="job-card-indicator" title="Lan aktiboa"></div>
-      <div class="job-card-info">
-        <div class="job-card-name">${escHtml(job.name)}</div>
-        <div class="job-card-meta">${job.sheet_count} orri · ${job.print_count} geruza</div>
-        <span class="format-pill">${job.format}</span>
-      </div>`;
-    main.addEventListener('click', () => selectJob(job.id));
+  const hasUsers = Object.keys(userGroups).length > 0;
 
-    const btns = el('div', 'job-card-btns');
+  for (const [user, jobs] of Object.entries(userGroups)) {
+    const header = el('div', 'user-group-header');
+    header.innerHTML = `<span class="user-group-icon">◎</span><span class="user-group-name">${escHtml(user)}</span>`;
+    list.appendChild(header);
+    for (const job of jobs) list.appendChild(renderJobCard(job));
+  }
 
-    const printBtn = el('button', 'jc-btn', iconPrinter());
-    printBtn.title = 'Lana inprimatu';
-    printBtn.addEventListener('click', e => { e.stopPropagation(); printJob(job.id); });
-
-    const renameBtn = el('button', 'jc-btn', iconPencil());
-    renameBtn.title = 'Berrizendatu';
-    renameBtn.addEventListener('click', e => { e.stopPropagation(); renameJob(job.id, job.name); });
-
-    const deleteBtn = el('button', 'jc-btn jc-btn-danger', iconTrash());
-    deleteBtn.title = 'Lana ezabatu';
-    deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteJobSidebar(job.id, job.name); });
-
-    btns.appendChild(printBtn);
-    btns.appendChild(renameBtn);
-    btns.appendChild(deleteBtn);
-    card.appendChild(main);
-    card.appendChild(btns);
-    list.appendChild(card);
+  if (noUserJobs.length) {
+    if (hasUsers) {
+      const header = el('div', 'user-group-header');
+      header.innerHTML = `<span class="user-group-name">Beste lanak</span>`;
+      list.appendChild(header);
+    }
+    for (const job of noUserJobs) list.appendChild(renderJobCard(job));
   }
 }
 
@@ -194,7 +234,7 @@ function renderJobDetail() {
   document.getElementById('job-name').textContent = job.name;
   document.getElementById('job-format-badge').textContent = job.format;
 
-  const isActive = job.is_current;
+  const isActive = isJobActive(job);
   const activateBtn = document.getElementById('btn-activate-job');
   if (isActive) {
     activateBtn.textContent = '● Aktibo';
@@ -457,7 +497,12 @@ function wireButtons() {
 
   document.getElementById('btn-activate-job').addEventListener('click', async () => {
     await safeCall(async () => {
-      await API.activateJob(state.selectedJobId);
+      const job = state.selectedJob;
+      if (job && job.source_user) {
+        await API.activateUserJob(job.source_user, state.selectedJobId);
+      } else {
+        await API.activateJob(state.selectedJobId);
+      }
       await loadJobs();
       await loadJob(state.selectedJobId);
       showToast('Lana aktibatuta');

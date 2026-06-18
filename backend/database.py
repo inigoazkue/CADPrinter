@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     name        TEXT    NOT NULL,
     format      TEXT    NOT NULL DEFAULT 'A3',
     is_current  INTEGER NOT NULL DEFAULT 0,
+    source_user TEXT,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
     status      TEXT    NOT NULL DEFAULT 'active'
 );
@@ -35,11 +36,18 @@ CREATE TABLE IF NOT EXISTS prints (
     original_name TEXT,
     preview_path  TEXT,
     format        TEXT,
+    source_user   TEXT,
     order_num     INTEGER NOT NULL DEFAULT 0,
     enabled       INTEGER NOT NULL DEFAULT 1,
     received_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (job_id)   REFERENCES jobs(id)   ON DELETE CASCADE,
     FOREIGN KEY (sheet_id) REFERENCES sheets(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_active_jobs (
+    source_user TEXT    PRIMARY KEY,
+    job_id      INTEGER,
+    FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE SET NULL
 );
 """
 
@@ -49,10 +57,15 @@ def init_db():
     os.makedirs(PREVIEWS_DIR, exist_ok=True)
     conn = get_db()
     conn.executescript(SCHEMA)
-    # Migration: add format column to existing installs
-    cols = [row[1] for row in conn.execute("PRAGMA table_info(prints)")]
-    if 'format' not in cols:
+    # Migrations for existing installs
+    print_cols = [row[1] for row in conn.execute("PRAGMA table_info(prints)")]
+    if 'format' not in print_cols:
         conn.execute("ALTER TABLE prints ADD COLUMN format TEXT")
+    if 'source_user' not in print_cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN source_user TEXT")
+    job_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)")]
+    if 'source_user' not in job_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN source_user TEXT")
     conn.commit()
     conn.close()
 
@@ -101,10 +114,13 @@ def db_get_job_full(conn, job_id: int):
     return result
 
 
-def db_create_job(conn, name: str, fmt: str) -> int:
-    conn.execute("UPDATE jobs SET is_current = 0")
+def db_create_job(conn, name: str, fmt: str, activate_globally: bool = True,
+                  source_user: str = None) -> int:
+    if activate_globally:
+        conn.execute("UPDATE jobs SET is_current = 0")
     cur = conn.execute(
-        "INSERT INTO jobs (name, format, is_current) VALUES (?, ?, 1)", (name, fmt)
+        "INSERT INTO jobs (name, format, is_current, source_user) VALUES (?, ?, ?, ?)",
+        (name, fmt, 1 if activate_globally else 0, source_user)
     )
     job_id = cur.lastrowid
     conn.execute(
@@ -137,3 +153,28 @@ def db_next_sheet_order(conn, job_id: int) -> int:
         "SELECT MAX(order_num) FROM sheets WHERE job_id = ?", (job_id,)
     ).fetchone()
     return (row[0] or 0) + 1
+
+
+# ── User active job helpers ───────────────────────────────────────────────────
+
+def db_get_user_active_job(conn, source_user: str):
+    return conn.execute(
+        """SELECT j.* FROM user_active_jobs u
+           JOIN jobs j ON j.id = u.job_id
+           WHERE u.source_user = ? AND u.job_id IS NOT NULL""",
+        (source_user,)
+    ).fetchone()
+
+
+def db_set_user_active_job(conn, source_user: str, job_id: int):
+    conn.execute(
+        "INSERT OR REPLACE INTO user_active_jobs (source_user, job_id) VALUES (?, ?)",
+        (source_user, job_id)
+    )
+
+
+def db_list_user_active_jobs(conn) -> dict:
+    rows = conn.execute(
+        "SELECT source_user, job_id FROM user_active_jobs WHERE job_id IS NOT NULL"
+    ).fetchall()
+    return {row[0]: row[1] for row in rows}

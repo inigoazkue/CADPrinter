@@ -74,7 +74,8 @@ def list_jobs():
     conn = db.get_db()
     try:
         rows = db.db_list_jobs(conn)
-        return [dict(r) for r in rows]
+        user_active = db.db_list_user_active_jobs(conn)
+        return {"jobs": [dict(r) for r in rows], "userActiveJobs": user_active}
     finally:
         conn.close()
 
@@ -393,9 +394,10 @@ async def delete_print(print_id: int):
 # ── Internal (called by watcher) ──────────────────────────────────────────────
 
 class InternalPrint(BaseModel):
-    filepath: str        # absolute path on disk (already in data/prints/)
-    filename: str        # basename
+    filepath: str
+    filename: str
     original_name: Optional[str] = None
+    source_user: Optional[str] = None
 
 
 @app.post("/api/internal/new-print", status_code=201)
@@ -403,15 +405,28 @@ async def internal_new_print(body: InternalPrint):
     """Called by watcher.py when cups-pdf drops a new file."""
     conn = db.get_db()
     try:
-        job = db.db_get_current_job(conn)
-        if not job:
-            # Auto-create job from first detected format
-            fmt = pdf_utils.detect_format(body.filepath)
-            job_id = db.db_create_job(conn, f"Lana {_job_counter(conn)}", fmt)
-            conn.commit()
-            job = db.db_get_job(conn, job_id)
-            await broadcast("job_created", {"job_id": job_id})
+        if body.source_user:
+            job = db.db_get_user_active_job(conn, body.source_user)
+            if not job:
+                fmt = pdf_utils.detect_format(body.filepath)
+                job_id = db.db_create_job(
+                    conn, f"Lana {_job_counter(conn)}", fmt,
+                    activate_globally=False, source_user=body.source_user
+                )
+                conn.commit()
+                db.db_set_user_active_job(conn, body.source_user, job_id)
+                conn.commit()
+                job = db.db_get_job(conn, job_id)
+                await broadcast("job_created", {"job_id": job_id})
+            job_id = job["id"]
         else:
+            job = db.db_get_current_job(conn)
+            if not job:
+                fmt = pdf_utils.detect_format(body.filepath)
+                job_id = db.db_create_job(conn, f"Lana {_job_counter(conn)}", fmt)
+                conn.commit()
+                job = db.db_get_job(conn, job_id)
+                await broadcast("job_created", {"job_id": job_id})
             job_id = job["id"]
 
         sheet = db.db_get_first_sheet(conn, job_id)
@@ -426,14 +441,29 @@ async def internal_new_print(body: InternalPrint):
 
         order = _next_print_order(conn, sheet_id)
         conn.execute(
-            """INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num, format)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO prints
+               (id, job_id, sheet_id, filename, original_name, preview_path, order_num, format, source_user)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (print_id, job_id, sheet_id, body.filename,
-             body.original_name or body.filename, preview_path, order, print_fmt)
+             body.original_name or body.filename, preview_path, order, print_fmt, body.source_user)
         )
         conn.commit()
         await broadcast("print_added", {"job_id": job_id, "sheet_id": sheet_id})
         return {"ok": True, "print_id": print_id, "job_id": job_id}
+    finally:
+        conn.close()
+
+
+@app.post("/api/users/{source_user}/jobs/{job_id}/activate")
+async def activate_user_job(source_user: str, job_id: int):
+    conn = db.get_db()
+    try:
+        if not db.db_get_job(conn, job_id):
+            raise HTTPException(404, "Job not found")
+        db.db_set_user_active_job(conn, source_user, job_id)
+        conn.commit()
+        await broadcast("job_activated", {"job_id": job_id, "source_user": source_user})
+        return {"ok": True}
     finally:
         conn.close()
 
