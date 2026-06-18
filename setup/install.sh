@@ -16,7 +16,8 @@ echo ""
 # ── Sistema ──────────────────────────────────────────────────────────────────
 echo "[1/6] Instalando paquetes del sistema..."
 apt-get update -q
-apt-get install -y python3 python3-pip python3-venv cups ghostscript
+# python3-pymupdf via apt evita compilar desde fuente (problema con proxies SSL corporativos)
+apt-get install -y python3 python3-pip python3-venv cups ghostscript python3-pymupdf
 
 # cups-pdf se llama diferente según la versión de Ubuntu
 if apt-get install -y cups-pdf 2>/dev/null; then
@@ -30,7 +31,8 @@ fi
 
 # ── Entorno Python ────────────────────────────────────────────────────────────
 echo "[2/6] Creando entorno virtual Python..."
-python3 -m venv "$PROJECT_DIR/venv"
+# --system-site-packages permite que el venv use python3-pymupdf instalado por apt
+python3 -m venv --system-site-packages "$PROJECT_DIR/venv"
 
 # Construir flags de proxy para pip (coge el valor del entorno o del perfil del usuario)
 PROXY_URL="${https_proxy:-${http_proxy:-}}"
