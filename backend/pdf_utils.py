@@ -1,4 +1,4 @@
-import fitz  # PyMuPDF
+import pymupdf as fitz  # PyMuPDF ≥1.24 renamed fitz → pymupdf
 import os
 from pathlib import Path
 
