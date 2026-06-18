@@ -19,6 +19,7 @@
           <span class="version-tag">v1.0.0</span>
         </div>
       </div>
+      <button class="btn-icon" id="btn-users" title="Inprimagailu erabiltzaileak">⚙</button>
       <button class="btn-icon" id="btn-new-job" title="Lan berria">+</button>
     </div>
     <div class="sidebar-list" id="job-list">
@@ -107,6 +108,31 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeFormatModal()">Utzi</button>
         <button class="btn btn-primary" onclick="submitFormat()">Gorde</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Inprimagailu erabiltzaileak ────────────────────── -->
+  <div id="modal-users" class="modal-overlay hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>Inprimagailu erabiltzaileak</h2>
+        <button class="btn-close" onclick="closeUsersModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Windows-etik CADPrinter inprimagailura konektatzeko erabiltzaileak. Inprimatzerakoan Windows-ek izena eta pasahitza eskatuko ditu behin.</p>
+        <div id="cups-users-list" class="cups-users-list"></div>
+        <div class="modal-divider"></div>
+        <label>Erabiltzaile berria
+          <input type="text" id="new-cups-username" placeholder="izen.abizena" autocomplete="off" />
+        </label>
+        <label>Pasahitza
+          <input type="password" id="new-cups-password" placeholder="••••••••" />
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeUsersModal()">Itxi</button>
+        <button class="btn btn-primary" onclick="submitAddCupsUser()">Gehitu</button>
       </div>
     </div>
   </div>

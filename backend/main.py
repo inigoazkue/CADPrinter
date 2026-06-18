@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -506,6 +507,66 @@ def _delete_print_files(filename: Optional[str], preview_path: Optional[str]):
             path.unlink(missing_ok=True)
     if preview_path and os.path.exists(preview_path):
         os.unlink(preview_path)
+
+
+# ── CUPS user management ──────────────────────────────────────────────────────
+
+_CUPS_PASSWD = Path("/etc/cups/passwd.md5")
+
+
+def _cups_list_users() -> list:
+    if not _CUPS_PASSWD.exists():
+        return []
+    try:
+        return [
+            line.split(':')[0]
+            for line in _CUPS_PASSWD.read_text().splitlines()
+            if line.strip()
+        ]
+    except Exception:
+        return []
+
+
+def _cups_run(args: list, stdin: str = "") -> tuple[bool, str]:
+    try:
+        proc = subprocess.run(
+            args, input=stdin, capture_output=True, text=True, timeout=5
+        )
+        return proc.returncode == 0, (proc.stderr or proc.stdout).strip()
+    except FileNotFoundError:
+        return False, "lppasswd ez da aurkitu"
+    except Exception as e:
+        return False, str(e)
+
+
+@app.get("/api/cups-users")
+def list_cups_users():
+    return {"users": _cups_list_users()}
+
+
+class CupsUserCreate(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/cups-users", status_code=201)
+def create_cups_user(body: CupsUserCreate):
+    username = body.username.strip()
+    if not username or not body.password:
+        raise HTTPException(400, "Erabiltzailea eta pasahitza beharrezkoak dira")
+    ok, err = _cups_run(['lppasswd', '-a', username],
+                        stdin=f"{body.password}\n{body.password}\n")
+    if not ok:
+        raise HTTPException(500, err or "Ezin da erabiltzailea sortu")
+    return {"ok": True, "username": username}
+
+
+@app.delete("/api/cups-users/{username}")
+def delete_cups_user(username: str):
+    ok, err = _cups_run(['lppasswd', '-x', username])
+    if not ok:
+        raise HTTPException(500, err or "Ezin da erabiltzailea ezabatu")
+    return {"ok": True}
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────

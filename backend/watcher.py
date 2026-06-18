@@ -20,22 +20,19 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler, FileCreatedEvent
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-DEFAULT_WATCH_DIR = "/var/spool/cups-pdf/ANONYMOUS"
+# Watch the parent cups-pdf directory so per-user subdirs are detected automatically.
+# With CUPS auth + Out /var/spool/cups-pdf/${User}, each user's PDFs land in
+# /var/spool/cups-pdf/<username>/ and we read the username from the dir name.
+DEFAULT_WATCH_DIR = "/var/spool/cups-pdf"
 DEFAULT_API_URL = "http://localhost:8080"
 PRINTS_DIR_RELATIVE = "data/prints"   # relative to project root
+
+# Directories inside the spool root that are not user dirs
+_NON_USER_DIRS = {"SPOOL", "ANONYMOUS"}
 
 # Project root = parent of this file's directory
 PROJECT_ROOT = Path(__file__).parent.parent
 PRINTS_DIR = PROJECT_ROOT / PRINTS_DIR_RELATIVE
-
-
-def parse_source_user(filename: str):
-    """Split 'username_docname.pdf' → ('username', 'docname.pdf').
-    Returns (None, filename) if no prefix is found (Label 1 not configured)."""
-    parts = filename.split('_', 1)
-    if len(parts) == 2 and parts[0]:
-        return parts[0], parts[1]
-    return None, filename
 
 
 def notify_server(api_url: str, filepath: str, filename: str, original_name: str,
@@ -90,26 +87,32 @@ class PDFHandler(FileSystemEventHandler):
         if not src.lower().endswith(".pdf"):
             return
 
-        print(f"[watcher] Detected: {src}")
+        # Determine source_user from the subdirectory name
+        parent_dir = Path(src).parent.name
+        if parent_dir in _NON_USER_DIRS:
+            source_user = None   # anonymous / no auth
+        else:
+            source_user = parent_dir
+
+        print(f"[watcher] Detected: {src} (user={source_user})")
         if not wait_for_stable(src):
             print(f"[watcher] Timeout waiting for stable file: {src}", file=sys.stderr)
             return
 
         # Copy to data/prints/
         original_name = Path(src).name
-        source_user, clean_name = parse_source_user(original_name)
-        dest_name = f"{int(time.time() * 1000)}_{clean_name}"
+        dest_name = f"{int(time.time() * 1000)}_{original_name}"
         PRINTS_DIR.mkdir(parents=True, exist_ok=True)
         dest_path = str(PRINTS_DIR / dest_name)
 
         try:
             shutil.copy2(src, dest_path)
-            print(f"[watcher] Copied to {dest_path} (user={source_user})")
+            print(f"[watcher] Copied to {dest_path}")
         except OSError as e:
             print(f"[watcher] Copy failed: {e}", file=sys.stderr)
             return
 
-        if notify_server(self.api_url, dest_path, dest_name, clean_name, source_user):
+        if notify_server(self.api_url, dest_path, dest_name, original_name, source_user):
             try:
                 os.unlink(src)
                 print(f"[watcher] Spool deleted: {src}")
@@ -135,7 +138,7 @@ def main():
     print(f"[watcher] Watching {watch_dir}  →  API at {args.api}")
     handler = PDFHandler(api_url=args.api)
     observer = Observer()
-    observer.schedule(handler, watch_dir, recursive=False)
+    observer.schedule(handler, watch_dir, recursive=True)
     observer.start()
     try:
         while True:
