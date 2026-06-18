@@ -12,8 +12,8 @@ from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-import database as db
-import pdf_utils
+from backend import database as db
+from backend import pdf_utils
 
 BASE_DIR = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
