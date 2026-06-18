@@ -222,7 +222,7 @@ async def add_sheet(job_id: int):
         if not db.db_get_job(conn, job_id):
             raise HTTPException(404, "Job not found")
         order = db.db_next_sheet_order(conn, job_id)
-        name = f"Hoja {order}"
+        name = f"Orria {order}"
         cur = conn.execute(
             "INSERT INTO sheets (job_id, name, order_num) VALUES (?, ?, ?)",
             (job_id, name, order)
@@ -407,7 +407,7 @@ async def internal_new_print(body: InternalPrint):
         if not job:
             # Auto-create job from first detected format
             fmt = pdf_utils.detect_format(body.filepath)
-            job_id = db.db_create_job(conn, f"Trabajo {_job_counter(conn)}", fmt)
+            job_id = db.db_create_job(conn, f"Lana {_job_counter(conn)}", fmt)
             conn.commit()
             job = db.db_get_job(conn, job_id)
             await broadcast("job_created", {"job_id": job_id})

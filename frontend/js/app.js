@@ -79,7 +79,7 @@ function showToast(msg, err = false) {
 
 async function safeCall(fn) {
   try { return await fn(); }
-  catch (e) { showToast(e.message || 'Error', true); }
+  catch (e) { showToast(e.message || 'Errorea', true); }
 }
 
 /* ── Load & refresh ────────────────────────────────────────────────────── */
@@ -104,7 +104,7 @@ async function refresh() {
 function renderSidebar() {
   const list = document.getElementById('job-list');
   if (!state.jobs.length) {
-    list.innerHTML = '<p class="empty-hint">Sin trabajos</p>';
+    list.innerHTML = '<p class="empty-hint">Lanik ez</p>';
     return;
   }
   list.innerHTML = '';
@@ -114,30 +114,28 @@ function renderSidebar() {
       (job.id === state.selectedJobId ? ' selected' : '') +
       (job.is_current ? ' active-job' : ''));
 
-    // Clickable main area
     const main = el('div', 'job-card-main');
     main.innerHTML = `
-      <div class="job-card-indicator" title="Trabajo activo"></div>
+      <div class="job-card-indicator" title="Lan aktiboa"></div>
       <div class="job-card-info">
         <div class="job-card-name">${escHtml(job.name)}</div>
-        <div class="job-card-meta">${job.sheet_count} hojas · ${job.print_count} capas</div>
+        <div class="job-card-meta">${job.sheet_count} orri · ${job.print_count} geruza</div>
         <span class="format-pill">${job.format}</span>
       </div>`;
     main.addEventListener('click', () => selectJob(job.id));
 
-    // Action buttons (appear on hover)
     const btns = el('div', 'job-card-btns');
 
     const printBtn = el('button', 'jc-btn', iconPrinter());
-    printBtn.title = 'Imprimir trabajo';
+    printBtn.title = 'Lana inprimatu';
     printBtn.addEventListener('click', e => { e.stopPropagation(); printJob(job.id); });
 
     const renameBtn = el('button', 'jc-btn', iconPencil());
-    renameBtn.title = 'Renombrar';
+    renameBtn.title = 'Berrizendatu';
     renameBtn.addEventListener('click', e => { e.stopPropagation(); renameJob(job.id, job.name); });
 
     const deleteBtn = el('button', 'jc-btn jc-btn-danger', iconTrash());
-    deleteBtn.title = 'Borrar trabajo';
+    deleteBtn.title = 'Lana ezabatu';
     deleteBtn.addEventListener('click', e => { e.stopPropagation(); deleteJobSidebar(job.id, job.name); });
 
     btns.appendChild(printBtn);
@@ -163,18 +161,18 @@ function printJob(id) {
 }
 
 async function renameJob(id, currentName) {
-  const newName = prompt('Nuevo nombre:', currentName);
+  const newName = prompt('Izen berria:', currentName);
   if (!newName || newName.trim() === currentName) return;
   await safeCall(async () => {
     await API.updateJob(id, { name: newName.trim() });
     await loadJobs();
     if (state.selectedJobId === id) await loadJob(id);
-    showToast('Trabajo renombrado');
+    showToast('Lana berrizendatuta');
   });
 }
 
 async function deleteJobSidebar(id, name) {
-  if (!confirm(`¿Borrar "${name}"?\nSe eliminarán todos sus PDFs.`)) return;
+  if (!confirm(`"${name}" ezabatu?\nBere PDF guztiak ezabatuko dira.`)) return;
   await safeCall(async () => {
     await API.deleteJob(id);
     if (state.selectedJobId === id) {
@@ -184,7 +182,7 @@ async function deleteJobSidebar(id, name) {
       document.getElementById('empty-state').classList.remove('hidden');
     }
     await loadJobs();
-    showToast('Trabajo eliminado');
+    showToast('Lana ezabatuta');
   });
 }
 
@@ -199,10 +197,10 @@ function renderJobDetail() {
   const isActive = job.is_current;
   const activateBtn = document.getElementById('btn-activate-job');
   if (isActive) {
-    activateBtn.textContent = '● Activo';
+    activateBtn.textContent = '● Aktibo';
     activateBtn.style.color = 'var(--success)';
   } else {
-    activateBtn.textContent = 'Activar';
+    activateBtn.textContent = 'Aktibatu';
     activateBtn.style.color = '';
   }
 
@@ -219,8 +217,7 @@ function renderSheet(sheet, fmt) {
 
   const header = el('div', 'sheet-header');
 
-  // Sheet name (editable)
-  const nameEl = el('span', 'sheet-name', escHtml(sheet.name || `Hoja ${sheet.order_num}`));
+  const nameEl = el('span', 'sheet-name', escHtml(sheet.name || `Orria ${sheet.order_num}`));
   nameEl.contentEditable = 'true';
   nameEl.spellcheck = false;
   nameEl.addEventListener('blur', () => {
@@ -231,12 +228,10 @@ function renderSheet(sheet, fmt) {
   });
   nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
 
-  // Large trash icon right next to sheet name
   const deleteSheetBtn = el('button', 'btn-delete-sheet', iconTrash(17));
-  deleteSheetBtn.title = 'Borrar hoja';
+  deleteSheetBtn.title = 'Orria ezabatu';
   deleteSheetBtn.addEventListener('click', () => confirmDeleteSheet(sheet.id));
 
-  // Upload PDF manually
   const uploadInput = document.createElement('input');
   uploadInput.type = 'file';
   uploadInput.accept = '.pdf,application/pdf';
@@ -257,11 +252,11 @@ function renderSheet(sheet, fmt) {
   header.appendChild(deleteSheetBtn);
   header.appendChild(actions);
 
-  // Body: prints grid
   const body = el('div', 'sheet-body');
+
+  const printsCol = el('div', 'sheet-prints-col');
   const grid = el('div', 'prints-grid');
   grid.dataset.sheetId = sheet.id;
-
   setupSheetDropTarget(grid, sheet.id);
 
   for (const p of sheet.prints) {
@@ -269,31 +264,27 @@ function renderSheet(sheet, fmt) {
   }
 
   if (!sheet.prints.length) {
-    const hint = el('p', '', '<span style="color:var(--text-muted);font-size:13px">Sin capas. Arrastra un PDF aquí o usa ⬆ PDF bat igo eskuz.</span>');
+    const hint = el('p', '', '<span style="color:var(--text-muted);font-size:13px">Geruza gabe. Arrastatu PDF bat hona edo erabili ⬆ PDF bat igo eskuz.</span>');
     grid.appendChild(hint);
   }
 
-  const printsCol = el('div', 'sheet-prints-col');
   printsCol.appendChild(grid);
   body.appendChild(printsCol);
 
-  // Preview column (right side)
   const previewCol = el('div', 'sheet-preview-col');
-  const previewLabel = el('div', 'sheet-preview-label', 'Vista previa');
-  previewCol.appendChild(previewLabel);
+  previewCol.appendChild(el('div', 'sheet-preview-label', 'Aurrebista'));
 
   if (sheet.prints.some(p => p.enabled)) {
     const img = el('img', 'sheet-preview-img');
-    img.alt = 'Vista previa';
+    img.alt = 'Aurrebista';
     img.src = API.sheetPreviewUrl(sheet.id);
     img.onerror = () => img.style.display = 'none';
     previewCol.appendChild(img);
   } else {
-    previewCol.appendChild(el('div', 'sheet-preview-empty', 'Sin capas activas'));
+    previewCol.appendChild(el('div', 'sheet-preview-empty', 'Geruza aktiborik ez'));
   }
 
   body.appendChild(previewCol);
-
   card.appendChild(header);
   card.appendChild(body);
   return card;
@@ -315,14 +306,14 @@ function renderPrint(p, sheetId, jobFmt) {
   const controls = el('div', 'print-thumb-controls');
 
   const toggleBtn = el('button', 'ctrl-btn toggle' + (p.enabled ? ' on' : ''), p.enabled ? '✓' : '○');
-  toggleBtn.title = p.enabled ? 'Deshabilitar' : 'Habilitar';
+  toggleBtn.title = p.enabled ? 'Desgaitu' : 'Gaitu';
   toggleBtn.addEventListener('click', e => {
     e.stopPropagation();
     safeCall(() => API.updatePrint(p.id, { enabled: !p.enabled }).then(() => loadJob(state.selectedJobId)));
   });
 
   const delBtn = el('button', 'ctrl-btn del', '✕');
-  delBtn.title = 'Eliminar capa';
+  delBtn.title = 'Geruza ezabatu';
   delBtn.addEventListener('click', e => {
     e.stopPropagation();
     confirmDeletePrint(p.id);
@@ -334,10 +325,9 @@ function renderPrint(p, sheetId, jobFmt) {
   thumb.appendChild(footer);
   thumb.appendChild(controls);
 
-  // Format mismatch warning badge
   if (p.format && jobFmt && p.format !== jobFmt) {
     const warn = el('div', 'format-warn', `⚠ ${p.format}`);
-    warn.title = `Este PDF es ${p.format} pero el trabajo es ${jobFmt}`;
+    warn.title = `PDF hau ${p.format} da baina lana ${jobFmt} da`;
     thumb.appendChild(warn);
   }
 
@@ -373,39 +363,39 @@ function setupSheetDropTarget(grid, sheetId) {
 /* ── Upload print ──────────────────────────────────────────────────────── */
 async function uploadToSheet(sheetId, file) {
   if (!file.name.toLowerCase().endsWith('.pdf')) {
-    showToast('Solo se admiten archivos PDF', true);
+    showToast('PDF fitxategiak soilik onartzen dira', true);
     return;
   }
-  showToast('Subiendo…');
+  showToast('Igotzen...');
   await safeCall(async () => {
     await API.uploadPrint(sheetId, file);
     await loadJob(state.selectedJobId);
     await loadJobs();
-    showToast('PDF añadido');
+    showToast('PDFa gehitu da');
   });
 }
 
 /* ── Sheet / print actions ──────────────────────────────────────────────── */
 async function confirmDeleteSheet(sheetId) {
-  if (!confirm('¿Borrar esta hoja?\nSus capas pasarán a la primera hoja.')) return;
+  if (!confirm('Orria ezabatu?\nBere geruzak lehen orrira pasatuko dira.')) return;
   await safeCall(async () => {
     await API.deleteSheet(sheetId);
     await refresh();
-    showToast('Hoja eliminada');
+    showToast('Orria ezabatuta');
   });
 }
 
 async function confirmDeletePrint(printId) {
-  if (!confirm('¿Eliminar esta capa?')) return;
+  if (!confirm('Geruza ezabatu?')) return;
   await safeCall(async () => {
     await API.deletePrint(printId);
     await loadJob(state.selectedJobId);
     await loadJobs();
-    showToast('Capa eliminada');
+    showToast('Geruza ezabatuta');
   });
 }
 
-/* ── Modal: New job ─────────────────────────────────────────────────────── */
+/* ── Modal: Lan berria ──────────────────────────────────────────────────── */
 function openNewJobModal() {
   document.getElementById('new-job-name').value = '';
   document.getElementById('new-job-format').value = 'A3';
@@ -428,11 +418,11 @@ async function submitNewJob() {
     closeNewJobModal();
     await loadJobs();
     await selectJob(job.id);
-    showToast('Trabajo creado');
+    showToast('Lana sortuta');
   });
 }
 
-/* ── Modal: Format ──────────────────────────────────────────────────────── */
+/* ── Modal: Formatua aldatu ─────────────────────────────────────────────── */
 function openFormatModal() {
   document.getElementById('format-select').value = state.selectedJob?.format || 'A3';
   document.getElementById('modal-format').classList.remove('hidden');
@@ -449,7 +439,7 @@ async function submitFormat() {
     closeFormatModal();
     await loadJob(state.selectedJobId);
     await loadJobs();
-    showToast('Formato actualizado');
+    showToast('Formatua eguneratuta');
   });
 }
 
@@ -470,14 +460,14 @@ function wireButtons() {
       await API.activateJob(state.selectedJobId);
       await loadJobs();
       await loadJob(state.selectedJobId);
-      showToast('Trabajo activado');
+      showToast('Lana aktibatuta');
     });
   });
 
   document.getElementById('btn-change-format').addEventListener('click', openFormatModal);
 
   document.getElementById('btn-delete-job').addEventListener('click', async () => {
-    if (!confirm(`¿Borrar el trabajo "${state.selectedJob?.name}"?\nSe eliminarán todos sus PDFs.`)) return;
+    if (!confirm(`"${state.selectedJob?.name}" lana ezabatu?\nBere PDF guztiak ezabatuko dira.`)) return;
     await safeCall(async () => {
       await API.deleteJob(state.selectedJobId);
       state.selectedJobId = null;
@@ -485,17 +475,15 @@ function wireButtons() {
       document.getElementById('job-detail').classList.add('hidden');
       document.getElementById('empty-state').classList.remove('hidden');
       await loadJobs();
-      showToast('Trabajo eliminado');
+      showToast('Lana ezabatuta');
     });
   });
 
-  // Open PDF in new tab → Chrome PDF viewer → Ctrl+P to print
   document.getElementById('btn-export-job').addEventListener('click', () => {
     if (!state.selectedJobId) return;
     window.open(API.exportJobUrl(state.selectedJobId), '_blank');
   });
 
-  // Job name inline edit (main panel)
   const nameEl = document.getElementById('job-name');
   nameEl.addEventListener('blur', async () => {
     const newName = nameEl.textContent.trim();
@@ -576,7 +564,7 @@ function escHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-/* ── Expose globals for inline onclick ──────────────────────────────────── */
+/* ── Expose globals ─────────────────────────────────────────────────────── */
 window.openNewJobModal  = openNewJobModal;
 window.closeNewJobModal = closeNewJobModal;
 window.submitNewJob     = submitNewJob;

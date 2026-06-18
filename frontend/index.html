@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="eu">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -19,10 +19,10 @@
           <span class="version-tag">v1.0.0</span>
         </div>
       </div>
-      <button class="btn-icon" id="btn-new-job" title="Nuevo trabajo">+</button>
+      <button class="btn-icon" id="btn-new-job" title="Lan berria">+</button>
     </div>
     <div class="sidebar-list" id="job-list">
-      <p class="empty-hint">Sin trabajos</p>
+      <p class="empty-hint">Lanik ez</p>
     </div>
   </aside>
 
@@ -30,9 +30,9 @@
   <main id="main">
     <div id="empty-state" class="empty-state">
       <div class="empty-icon">📄</div>
-      <h2>Ningún trabajo seleccionado</h2>
-      <p>Crea un trabajo nuevo o selecciona uno de la lista.</p>
-      <button class="btn btn-primary" onclick="openNewJobModal()">+ Nuevo trabajo</button>
+      <h2>Ez dago lanik hautatuta</h2>
+      <p>Sortu lan berri bat edo hautatu bat zerrendatik.</p>
+      <button class="btn btn-primary" onclick="openNewJobModal()">+ Lan berria</button>
     </div>
 
     <div id="job-detail" class="hidden">
@@ -43,10 +43,10 @@
           <span id="job-format-badge" class="format-badge"></span>
         </div>
         <div class="job-actions">
-          <button class="btn btn-ghost" id="btn-change-format">Formato</button>
-          <button class="btn btn-ghost" id="btn-activate-job">Activar</button>
-          <button class="btn btn-danger" id="btn-delete-job">Borrar</button>
-          <button class="btn btn-primary" id="btn-export-job">🖨 Imprimir</button>
+          <button class="btn btn-ghost" id="btn-change-format">Formatua</button>
+          <button class="btn btn-ghost" id="btn-activate-job">Aktibatu</button>
+          <button class="btn btn-danger" id="btn-delete-job">Ezabatu</button>
+          <button class="btn btn-primary" id="btn-export-job">🖨 Inprimatu</button>
         </div>
       </div>
 
@@ -55,23 +55,23 @@
 
       <!-- Add sheet button -->
       <div class="add-sheet-row">
-        <button class="btn btn-ghost btn-add-sheet" id="btn-add-sheet">+ Nueva hoja</button>
+        <button class="btn btn-ghost btn-add-sheet" id="btn-add-sheet">+ Orri berria</button>
       </div>
     </div>
   </main>
 
-  <!-- ── Modal: Nuevo trabajo ──────────────────────────────────── -->
+  <!-- ── Modal: Lan berria ──────────────────────────────────────── -->
   <div id="modal-new-job" class="modal-overlay hidden">
     <div class="modal">
       <div class="modal-header">
-        <h2>Nuevo trabajo</h2>
+        <h2>Lan berria</h2>
         <button class="btn-close" onclick="closeNewJobModal()">✕</button>
       </div>
       <div class="modal-body">
-        <label>Nombre
-          <input type="text" id="new-job-name" placeholder="Panel eléctrico-01" autocomplete="off" />
+        <label>Izena
+          <input type="text" id="new-job-name" placeholder="Koadro elektrikoa-01" autocomplete="off" />
         </label>
-        <label>Formato de hoja
+        <label>Orri-formatua
           <select id="new-job-format">
             <option value="A3">A3 (297 × 420 mm)</option>
             <option value="A4">A4 (210 × 297 mm)</option>
@@ -79,25 +79,25 @@
         </label>
         <label class="checkbox-label">
           <input type="checkbox" id="new-job-activate" checked />
-          Activar como trabajo actual
+          Aktibatu lan aktibo gisa
         </label>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeNewJobModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="submitNewJob()">Crear</button>
+        <button class="btn btn-ghost" onclick="closeNewJobModal()">Utzi</button>
+        <button class="btn btn-primary" onclick="submitNewJob()">Sortu</button>
       </div>
     </div>
   </div>
 
-  <!-- ── Modal: Cambiar formato ────────────────────────────────── -->
+  <!-- ── Modal: Formatua aldatu ─────────────────────────────────── -->
   <div id="modal-format" class="modal-overlay hidden">
     <div class="modal modal-sm">
       <div class="modal-header">
-        <h2>Cambiar formato</h2>
+        <h2>Formatua aldatu</h2>
         <button class="btn-close" onclick="closeFormatModal()">✕</button>
       </div>
       <div class="modal-body">
-        <label>Formato de hoja
+        <label>Orri-formatua
           <select id="format-select">
             <option value="A3">A3 (297 × 420 mm)</option>
             <option value="A4">A4 (210 × 297 mm)</option>
@@ -105,8 +105,8 @@
         </label>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeFormatModal()">Cancelar</button>
-        <button class="btn btn-primary" onclick="submitFormat()">Guardar</button>
+        <button class="btn btn-ghost" onclick="closeFormatModal()">Utzi</button>
+        <button class="btn btn-primary" onclick="submitFormat()">Gorde</button>
       </div>
     </div>
   </div>

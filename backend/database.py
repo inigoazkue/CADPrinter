@@ -108,7 +108,7 @@ def db_create_job(conn, name: str, fmt: str) -> int:
     )
     job_id = cur.lastrowid
     conn.execute(
-        "INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Hoja 1', 1)", (job_id,)
+        "INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Orria 1', 1)", (job_id,)
     )
     return job_id
 
