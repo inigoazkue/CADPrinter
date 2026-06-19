@@ -19,7 +19,7 @@ Aplicación web para EITB que recibe PDFs desde AutoCAD (vía impresora virtual 
 |---|---|
 | `backend/main.py` | FastAPI app: todas las rutas REST, SSE, ficheros estáticos |
 | `backend/database.py` | Schema SQLite, init con migración, helpers de consulta |
-| `backend/pdf_utils.py` | PyMuPDF: preview PNG, overlay combinado, detección formato A3/A4, exportación |
+| `backend/pdf_utils.py` | PyMuPDF: preview PNG, overlay combinado, detección formato A0–A6, exportación |
 | `backend/watcher.py` | watchdog sobre `/var/spool/cups-pdf/` (recursivo), on_created + on_moved, notifica API |
 | `frontend/js/app.js` | Estado, API calls, render, drag & drop, SSE |
 | `frontend/css/style.css` | Estética Allbirds: fondo crema `#F8F5F1`, charcoal `#212A2F`, botones pill |
@@ -43,7 +43,7 @@ Aplicación web para EITB que recibe PDFs desde AutoCAD (vía impresora virtual 
 ## Estructura de datos
 
 ```
-jobs (id, name, format A3/A4, is_current, source_user, created_at)
+jobs (id, name, format A0–A6, is_current, source_user, created_at)
   └── sheets (id, job_id, name, order_num)
         └── prints (id, sheet_id, job_id, filename, original_name,
                     preview_path, format, enabled, order_num, source_user, received_at)

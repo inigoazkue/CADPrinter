@@ -6,15 +6,20 @@ from pathlib import Path
 PT_PER_MM = 2.83465
 
 PAGE_SIZES_PT = {
-    "A4": (595.28, 841.89),
+    "A0": (2383.94, 3370.39),
+    "A1": (1683.78, 2383.94),
+    "A2": (1190.55, 1683.78),
     "A3": (841.89, 1190.55),
+    "A4": (595.28, 841.89),
+    "A5": (419.53, 595.28),
+    "A6": (297.64, 419.53),
 }
 
 TOLERANCE_PT = 15  # tolerance for format detection
 
 
 def detect_format(pdf_path: str) -> str:
-    """Detect A3/A4 from first page dimensions."""
+    """Detect paper format from first page dimensions."""
     try:
         doc = fitz.open(pdf_path)
         page = doc[0]

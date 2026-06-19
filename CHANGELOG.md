@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.1.0 — 2026-06-19
+
+Soporte completo de formatos ISO 216: A0, A1, A2, A5 y A6 añadidos además de los A3 y A4 ya existentes.
+
+### Nuevas funcionalidades
+
+**Formatos de papel A0–A6**
+- Detección automática del formato ampliada a A0, A1, A2, A5 y A6
+- Los desplegables de creación y cambio de formato incluyen todos los tamaños ISO 216
+- El overlay y la exportación PDF usan las dimensiones correctas para cada formato
+
+---
+
 ## v2.0.0 — 2026-06-19
 
 Soporte multi-usuario: varios usuarios Windows pueden imprimir simultáneamente a la misma impresora y sus trabajos se enrutan automáticamente de forma independiente.

@@ -47,13 +47,13 @@ Navegador web (frontend vanilla JS)
 
 ```
 jobs
-  ├── id, name, format (A3/A4), is_current, source_user, created_at
+  ├── id, name, format (A0–A6), is_current, source_user, created_at
   └── sheets (1..N)
         ├── id, job_id, name, order_num
         └── prints (0..N)
               ├── id, sheet_id, job_id, source_user
               ├── filename, original_name, preview_path
-              ├── format (A3/A4 detectado)
+              ├── format (A0–A6 detectado)
               ├── enabled (1/0)
               └── received_at
 
