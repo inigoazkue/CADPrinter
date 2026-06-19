@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -508,54 +509,110 @@ def _delete_print_files(filename: Optional[str], preview_path: Optional[str]):
         os.unlink(preview_path)
 
 
-# ── CUPS user management ──────────────────────────────────────────────────────
-# No passwords needed: printer uses auth-info-required=username only.
-# Windows sends the login username automatically; cups-pdf routes to per-user
-# subdirs via Out /var/spool/cups-pdf/${User}. Users appear automatically on
-# first print. Management here is just listing/removing known users.
+# ── CUPS printer queue management ─────────────────────────────────────────────
+# Each user gets their own CUPS queue: CADPrinter-<username>
+# cups-pdf PostProcessing script routes PDFs to per-user spool subdirectories.
+# Requires sudoers entry: ingprod ALL=(ALL) NOPASSWD: /usr/sbin/lpadmin,...
 
-_CUPS_SPOOL = Path("/var/spool/cups-pdf")
-_NON_USER_DIRS = {"SPOOL", "ANONYMOUS"}
+_CUPS_PPD_CANDIDATES = [
+    "/usr/share/ppd/cups-pdf/CUPS-PDF_opt.ppd",
+    "/usr/share/ppd/cups-pdf/CUPS-PDF.ppd",
+    "/usr/share/cups/model/CUPS-PDF_opt.ppd",
+]
 
 
-def _cups_list_users() -> list:
-    """Users from the cups-pdf spool subdirs + user_active_jobs table."""
-    users = set()
-    # From spool directories
+def _find_cups_pdf_ppd() -> str:
+    for p in _CUPS_PPD_CANDIDATES:
+        if Path(p).exists():
+            return p
     try:
-        for d in _CUPS_SPOOL.iterdir():
-            if d.is_dir() and d.name not in _NON_USER_DIRS:
-                users.add(d.name)
+        r = subprocess.run(
+            ['find', '/usr/share', '-name', 'CUPS-PDF*.ppd'],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = [l for l in r.stdout.splitlines() if l.strip()]
+        if lines:
+            return lines[0]
     except Exception:
         pass
-    # From user_active_jobs (users who have printed at least once)
-    conn = db.get_db()
+    return _CUPS_PPD_CANDIDATES[0]
+
+
+def _cups_run(cmd: list) -> tuple:
     try:
-        for row in conn.execute("SELECT DISTINCT source_user FROM user_active_jobs WHERE source_user IS NOT NULL"):
-            users.add(row[0])
-        for row in conn.execute("SELECT DISTINCT source_user FROM jobs WHERE source_user IS NOT NULL"):
-            users.add(row[0])
-    finally:
-        conn.close()
-    return sorted(users)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return r.returncode == 0, (r.stderr or r.stdout).strip()
+    except FileNotFoundError as e:
+        return False, f"Komandoa ez da aurkitu: {e}"
+    except Exception as e:
+        return False, str(e)
 
 
-@app.get("/api/cups-users")
-def list_cups_users():
-    return {"users": _cups_list_users()}
+def _list_cups_printers() -> list:
+    """Return list of usernames that have a CADPrinter-<user> CUPS queue."""
+    try:
+        r = subprocess.run(['lpstat', '-a'], capture_output=True, text=True, timeout=5)
+        users = []
+        for line in r.stdout.splitlines():
+            name = line.split()[0] if line.split() else ''
+            if name.startswith('CADPrinter-'):
+                users.append(name[len('CADPrinter-'):])
+        return sorted(users)
+    except Exception:
+        return []
 
 
-@app.delete("/api/cups-users/{username}")
-async def delete_cups_user(username: str):
-    """Remove all job assignments for a user (does not delete jobs themselves)."""
+def _create_cups_printer(username: str) -> tuple:
+    queue = f"CADPrinter-{username}"
+    ppd = _find_cups_pdf_ppd()
+    for cmd in [
+        ['sudo', 'lpadmin', '-p', queue, '-E', '-v', 'cups-pdf:/', '-P', ppd,
+         '-D', f"CAD Printer — {username}"],
+        ['sudo', 'cupsaccept', queue],
+        ['sudo', 'cupsenable', queue],
+    ]:
+        ok, err = _cups_run(cmd)
+        if not ok:
+            return False, err
+    return True, ""
+
+
+def _delete_cups_printer(username: str) -> tuple:
+    return _cups_run(['sudo', 'lpadmin', '-x', f"CADPrinter-{username}"])
+
+
+@app.get("/api/cups-printers")
+def list_cups_printers():
+    return {"users": _list_cups_printers()}
+
+
+class CupsPrinterCreate(BaseModel):
+    username: str
+
+
+@app.post("/api/cups-printers", status_code=201)
+def create_cups_printer(body: CupsPrinterCreate):
+    username = body.username.strip()
+    if not username:
+        raise HTTPException(400, "Erabiltzaile-izena beharrezkoa da")
+    ok, err = _create_cups_printer(username)
+    if not ok:
+        raise HTTPException(500, err or "Ezin da inprimagailua sortu")
+    return {"ok": True, "username": username}
+
+
+@app.delete("/api/cups-printers/{username}")
+async def delete_cups_printer(username: str):
+    ok, err = _delete_cups_printer(username)
+    if not ok:
+        raise HTTPException(500, err or "Ezin da inprimagailua ezabatu")
     conn = db.get_db()
     try:
         conn.execute("DELETE FROM user_active_jobs WHERE source_user = ?", (username,))
         conn.commit()
-        await broadcast("users_changed", {})
-        return {"ok": True}
     finally:
         conn.close()
+    return {"ok": True}
 
 
 # ── Static frontend ───────────────────────────────────────────────────────────

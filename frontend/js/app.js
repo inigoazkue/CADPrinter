@@ -41,8 +41,9 @@ const API = {
   updatePrint:     (id, data)   => API.request('PATCH', `/prints/${id}`, data),
   printPreviewUrl: (id)         => `/api/prints/${id}/preview`,
 
-  getCupsUsers:    ()           => API.request('GET', '/cups-users'),
-  deleteCupsUser:  (u)          => API.request('DELETE', `/cups-users/${encodeURIComponent(u)}`),
+  getCupsPrinters:    ()  => API.request('GET', '/cups-printers'),
+  addCupsPrinter:     (u) => API.request('POST', '/cups-printers', { username: u }),
+  deleteCupsPrinter:  (u) => API.request('DELETE', `/cups-printers/${encodeURIComponent(u)}`),
 
   async uploadPrint(sheetId, file) {
     const form = new FormData();
@@ -488,44 +489,61 @@ async function submitFormat() {
 
 /* ── Modal: Inprimagailu erabiltzaileak ─────────────────────────────────── */
 async function openUsersModal() {
+  document.getElementById('new-cups-username').value = '';
   document.getElementById('modal-users').classList.remove('hidden');
-  await loadCupsUsers();
+  await loadCupsPrinters();
 }
 
 function closeUsersModal() {
   document.getElementById('modal-users').classList.add('hidden');
 }
 
-async function loadCupsUsers() {
+async function loadCupsPrinters() {
   const container = document.getElementById('cups-users-list');
   try {
-    const resp = await API.getCupsUsers();
+    const resp = await API.getCupsPrinters();
     const users = resp.users || [];
     if (!users.length) {
-      container.innerHTML = '<p class="cups-users-empty">Erabiltzailerik ez</p>';
+      container.innerHTML = '<p class="cups-users-empty">Inprimagailurik ez. Gehitu bat behean.</p>';
       return;
     }
     container.innerHTML = '';
+    const serverHost = location.hostname + ':631';
     for (const u of users) {
       const row = el('div', 'cups-user-row');
-      const name = el('span', 'cups-user-name', escHtml(u));
+      const info = el('div', 'cups-user-info');
+      info.innerHTML = `<span class="cups-user-name">${escHtml(u)}</span>
+        <span class="cups-user-url">http://${escHtml(serverHost)}/printers/CADPrinter-${escHtml(u)}</span>`;
       const del = el('button', 'cups-user-del', iconTrash(13));
-      del.title = 'Ezabatu';
+      del.title = 'Inprimagailua ezabatu';
       del.addEventListener('click', async () => {
-        if (!confirm(`"${u}" ezabatu?`)) return;
+        if (!confirm(`"${u}" inprimagailua eta bere lan-esleipena ezabatu?`)) return;
         await safeCall(async () => {
-          await API.deleteCupsUser(u);
-          await loadCupsUsers();
-          showToast('Erabiltzailea ezabatuta');
+          await API.deleteCupsPrinter(u);
+          await loadCupsPrinters();
+          await loadJobs();
+          showToast(`"${u}" ezabatuta`);
         });
       });
-      row.appendChild(name);
+      row.appendChild(info);
       row.appendChild(del);
       container.appendChild(row);
     }
   } catch (e) {
     container.innerHTML = `<p class="cups-users-empty" style="color:var(--danger)">${escHtml(e.message)}</p>`;
   }
+}
+
+async function submitAddCupsUser() {
+  const username = document.getElementById('new-cups-username').value.trim();
+  if (!username) { document.getElementById('new-cups-username').focus(); return; }
+  showToast('Inprimagailua sortzen...');
+  await safeCall(async () => {
+    await API.addCupsPrinter(username);
+    document.getElementById('new-cups-username').value = '';
+    await loadCupsPrinters();
+    showToast(`"${username}" inprimagailua sortuta`);
+  });
 }
 
 
@@ -665,7 +683,8 @@ window.closeNewJobModal = closeNewJobModal;
 window.submitNewJob     = submitNewJob;
 window.closeFormatModal = closeFormatModal;
 window.submitFormat     = submitFormat;
-window.closeUsersModal  = closeUsersModal;
+window.closeUsersModal   = closeUsersModal;
+window.submitAddCupsUser = submitAddCupsUser;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {
