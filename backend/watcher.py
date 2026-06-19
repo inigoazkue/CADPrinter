@@ -80,26 +80,12 @@ class PDFHandler(FileSystemEventHandler):
     def __init__(self, api_url: str):
         self.api_url = api_url
 
-    def on_created(self, event: FileCreatedEvent):
-        if event.is_directory:
-            return
-        src = event.src_path
-        if not src.lower().endswith(".pdf"):
-            return
-
-        # Determine source_user from the subdirectory name
-        parent_dir = Path(src).parent.name
-        if parent_dir in _NON_USER_DIRS:
-            source_user = None   # anonymous / no auth
-        else:
-            source_user = parent_dir
-
+    def _process_pdf(self, src: str, source_user):
         print(f"[watcher] Detected: {src} (user={source_user})")
         if not wait_for_stable(src):
             print(f"[watcher] Timeout waiting for stable file: {src}", file=sys.stderr)
             return
 
-        # Copy to data/prints/
         original_name = Path(src).name
         dest_name = f"{int(time.time() * 1000)}_{original_name}"
         PRINTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -118,6 +104,40 @@ class PDFHandler(FileSystemEventHandler):
                 print(f"[watcher] Spool deleted: {src}")
             except OSError as e:
                 print(f"[watcher] Could not delete spool file: {e}", file=sys.stderr)
+
+    def on_created(self, event: FileCreatedEvent):
+        if event.is_directory:
+            return
+        src = event.src_path
+        if not src.lower().endswith(".pdf"):
+            return
+
+        parent_dir = Path(src).parent.name
+        if parent_dir in _NON_USER_DIRS:
+            # PostProcessing may move this file to a user directory.
+            # Wait 2s; if the file disappears, on_moved will handle it from the user dir.
+            time.sleep(2.0)
+            if not Path(src).exists():
+                return
+            source_user = None
+        else:
+            source_user = parent_dir
+
+        self._process_pdf(src, source_user)
+
+    def on_moved(self, event):
+        if event.is_directory:
+            return
+        dest = event.dest_path
+        if not dest.lower().endswith(".pdf"):
+            return
+
+        dest_parent = Path(dest).parent.name
+        if dest_parent in _NON_USER_DIRS:
+            return
+
+        source_user = dest_parent
+        self._process_pdf(dest, source_user)
 
 
 def main():
