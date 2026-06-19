@@ -1,5 +1,40 @@
 # Changelog
 
+## v2.5.0 — 2026-06-19
+
+Revisión completa del flujo de split: arquitectura correcta, drag que funciona, rotación real y hoja Iturriak colapsada.
+
+### Correcciones y mejoras
+
+**Arquitectura del split (fix fundamental)**
+- Los tiles van todos en la MISMA hoja (la original), no en hojas separadas
+- La vista previa combinada muestra los tiles en rejilla (side-by-side), sin solapamiento ni ocultamiento
+- El original se mueve a una hoja "Iturriak" (deshabilitada, solo para referencia)
+- Cada tile guarda su posición en rejilla (`tile_col`, `tile_row`) en la base de datos
+- El export genera una página separada por tile en el formato del tile (A3), no del trabajo
+
+**Rotación real del PDF fuente**
+- El botón de rotación está ahora arriba del panel de controles (siempre visible)
+- La rotación recarga la preview desde el servidor con el PDF rotado de verdad
+- Las líneas de corte se reposicionan correctamente tras rotar
+
+**Drag de líneas de corte arreglado**
+- Las líneas ya no se eliminan del DOM durante el arrastre — el elemento sigue capturado
+- Solo se actualiza la posición CSS de la línea arrastrada y los overlays de tile
+- Resultado: drag suave y fiable sin pérdida de eventos de pointer
+
+**Hoja Iturriak colapsada**
+- Se muestra con apariencia atenuada y borde discontinuo al fondo de la lista
+- Solo muestra la miniatura del original (sin vista previa combinada)
+- No permite añadir ni reorganizar capas (es solo para consulta)
+
+**Eliminación del editor de offsets por capa**
+- Eliminados los inputs X/Y mm por tile del modal de split
+- Eliminado el botón de mover por mm en las capas del visor de hojas
+- El posicionamiento es implícito por la rejilla del split
+
+---
+
 ## v2.4.0 — 2026-06-18
 
 Mejoras en el split interactivo: rotación del origen, líneas de corte con área de arrastre ampliada, corrección de tiles invisibles en la preview, y editor de posición X/Y por capa en la vista combinada.

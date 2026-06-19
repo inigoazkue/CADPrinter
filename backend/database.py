@@ -40,6 +40,10 @@ CREATE TABLE IF NOT EXISTS prints (
     order_num     INTEGER NOT NULL DEFAULT 0,
     enabled       INTEGER NOT NULL DEFAULT 1,
     received_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    offset_x_mm   REAL    DEFAULT 0,
+    offset_y_mm   REAL    DEFAULT 0,
+    tile_col      INTEGER,
+    tile_row      INTEGER,
     FOREIGN KEY (job_id)   REFERENCES jobs(id)   ON DELETE CASCADE,
     FOREIGN KEY (sheet_id) REFERENCES sheets(id) ON DELETE SET NULL
 );
@@ -67,6 +71,10 @@ def init_db():
         conn.execute("ALTER TABLE prints ADD COLUMN offset_x_mm REAL DEFAULT 0")
     if 'offset_y_mm' not in print_cols:
         conn.execute("ALTER TABLE prints ADD COLUMN offset_y_mm REAL DEFAULT 0")
+    if 'tile_col' not in print_cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN tile_col INTEGER")
+    if 'tile_row' not in print_cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN tile_row INTEGER")
     job_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)")]
     if 'source_user' not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN source_user TEXT")

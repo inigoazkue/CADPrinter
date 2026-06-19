@@ -264,7 +264,31 @@ function renderJobDetail() {
   }
 }
 
+function renderIturriakSheet(sheet) {
+  const card = el('div', 'sheet-card sheet-iturriak');
+  const header = el('div', 'iturriak-header');
+  header.innerHTML = `<span class="iturriak-label">📁 Iturriak</span><span class="iturriak-hint">Jatorrizko fitxategia (erreferentzia)</span>`;
+  card.appendChild(header);
+  const printsRow = el('div', 'iturriak-prints');
+  for (const p of sheet.prints) {
+    const thumb = el('div', 'iturriak-thumb');
+    const img = el('img');
+    img.src = API.printPreviewUrl(p.id);
+    img.onerror = () => img.style.display = 'none';
+    const name = el('div', 'iturriak-name', escHtml((p.original_name || p.filename).replace(/\.\w+$/, '')));
+    thumb.appendChild(img);
+    thumb.appendChild(name);
+    printsRow.appendChild(thumb);
+  }
+  card.appendChild(printsRow);
+  return card;
+}
+
 function renderSheet(sheet, fmt) {
+  if (sheet.name === 'Iturriak') {
+    return renderIturriakSheet(sheet);
+  }
+
   const card = el('div', 'sheet-card');
   card.dataset.sheetId = sheet.id;
 
@@ -376,7 +400,9 @@ function renderPrint(p, sheetId, jobFmt) {
   controls.appendChild(toggleBtn);
   controls.appendChild(delBtn);
 
-  if (p.format && ['A0', 'A1', 'A2'].includes(p.format)) {
+  const isTile = p.tile_col !== null && p.tile_col !== undefined;
+
+  if (!isTile && p.format && ['A0', 'A1', 'A2'].includes(p.format)) {
     const splitBtn = el('button', 'ctrl-btn split-btn', iconSplit());
     splitBtn.title = 'Zatitu tilesetan';
     splitBtn.addEventListener('click', e => {
@@ -386,47 +412,9 @@ function renderPrint(p, sheetId, jobFmt) {
     controls.appendChild(splitBtn);
   }
 
-  const moveBtn = el('button', 'ctrl-btn move-btn', iconMove());
-  moveBtn.title = 'Posizioa aldatu (mm)';
-  moveBtn.addEventListener('click', e => {
-    e.stopPropagation();
-    const panel = thumb.querySelector('.print-offset-panel');
-    panel.classList.toggle('show');
-    moveBtn.classList.toggle('active', panel.classList.contains('show'));
-  });
-  controls.appendChild(moveBtn);
-
   thumb.appendChild(img);
   thumb.appendChild(footer);
   thumb.appendChild(controls);
-
-  const offsetPanel = el('div', 'print-offset-panel');
-  const xInput = el('input');
-  xInput.type = 'number'; xInput.value = p.offset_x_mm || 0; xInput.step = '1'; xInput.min = '-300'; xInput.max = '300';
-  const yInput = el('input');
-  yInput.type = 'number'; yInput.value = p.offset_y_mm || 0; yInput.step = '1'; yInput.min = '-300'; yInput.max = '300';
-
-  const rowX = el('div', 'offset-row');
-  rowX.append(Object.assign(document.createElement('span'), {textContent: 'X'}), xInput, Object.assign(document.createElement('span'), {className: 'unit', textContent: 'mm'}));
-  const rowY = el('div', 'offset-row');
-  rowY.append(Object.assign(document.createElement('span'), {textContent: 'Y'}), yInput, Object.assign(document.createElement('span'), {className: 'unit', textContent: 'mm'}));
-  offsetPanel.append(rowX, rowY);
-
-  let offsetTimer = null;
-  const applyOffset = () => {
-    clearTimeout(offsetTimer);
-    offsetTimer = setTimeout(async () => {
-      const ox = parseFloat(xInput.value) || 0;
-      const oy = parseFloat(yInput.value) || 0;
-      await safeCall(() => API.updatePrint(p.id, { offset_x_mm: ox, offset_y_mm: oy }));
-      // Refresh sheet preview without full re-render
-      const sheetPreviewImg = document.querySelector(`img[data-sheet-preview="${p.sheet_id}"]`);
-      if (sheetPreviewImg) sheetPreviewImg.src = API.sheetPreviewUrl(p.sheet_id);
-    }, 600);
-  };
-  xInput.addEventListener('input', applyOffset);
-  yInput.addEventListener('input', applyOffset);
-  thumb.appendChild(offsetPanel);
 
   if (p.format && jobFmt && p.format !== jobFmt) {
     const warn = el('div', 'format-warn', `⚠ ${p.format}`);
@@ -569,7 +557,6 @@ const splitState = {
   rowPositions: [],
   overlapMm: 5,
   tileFormat: 'A3',
-  offsets: [],
   rotation: 0,
 };
 
@@ -589,15 +576,13 @@ function openSplitModal(printId, fmt) {
   splitState.rowPositions = Array.from({length: rows - 1}, (_, i) => (i + 1) / rows);
   splitState.overlapMm = 5;
   splitState.tileFormat = 'A3';
-  splitState.offsets = Array.from({length: cols * rows}, () => ({x_mm: 0, y_mm: 0}));
-
   splitState.rotation = 0;
   document.getElementById('split-cols').value = cols;
   document.getElementById('split-rows').value = rows;
   document.getElementById('split-overlap').value = 5;
   document.getElementById('split-overlap-val').textContent = '5 mm';
   document.getElementById('split-tile-format').value = 'A3';
-  document.getElementById('btn-split-rotate').textContent = '↻ 0° — Klikatu biratzeko';
+  document.getElementById('btn-split-rotate').textContent = '↻ 0°';
   document.getElementById('btn-submit-split').disabled = false;
   document.getElementById('btn-submit-split').textContent = 'Zatitu';
 
@@ -606,7 +591,6 @@ function openSplitModal(printId, fmt) {
   img.onload = () => renderSplitDividers();
   img.src = API.printPreviewUrl(printId);
 
-  renderSplitOffsets();
   document.getElementById('modal-split').classList.remove('hidden');
 }
 
@@ -657,68 +641,46 @@ function renderSplitDividers() {
   });
 }
 
+function updateTileOverlays(wrap) {
+  const W = wrap.clientWidth;
+  const imgEl = wrap.querySelector('img');
+  const H = imgEl ? imgEl.clientHeight : wrap.clientHeight;
+  const colEdges = [0, ...splitState.colPositions.map(p => p * W), W];
+  const rowEdges = [0, ...splitState.rowPositions.map(p => p * H), H];
+  wrap.querySelectorAll('.split-tile-overlay').forEach((ov, i) => {
+    const c = i % splitState.cols;
+    const r = Math.floor(i / splitState.cols);
+    ov.style.left   = colEdges[c] + 'px';
+    ov.style.top    = rowEdges[r] + 'px';
+    ov.style.width  = (colEdges[c + 1] - colEdges[c]) + 'px';
+    ov.style.height = (rowEdges[r + 1] - rowEdges[r]) + 'px';
+  });
+}
+
 function makeDraggable(divider, axis, idx, wrap) {
   divider.addEventListener('pointerdown', e => {
     e.preventDefault();
     divider.setPointerCapture(e.pointerId);
     const rect = wrap.getBoundingClientRect();
 
-    const onMove = me => {
+    function onMove(me) {
+      const pos = axis === 'col'
+        ? Math.max(0.05, Math.min(0.95, (me.clientX - rect.left) / rect.width))
+        : Math.max(0.05, Math.min(0.95, (me.clientY - rect.top) / rect.height));
       if (axis === 'col') {
-        splitState.colPositions[idx] = Math.max(0.05, Math.min(0.95,
-          (me.clientX - rect.left) / rect.width));
+        splitState.colPositions[idx] = pos;
+        divider.style.left = (pos * 100) + '%';
       } else {
-        splitState.rowPositions[idx] = Math.max(0.05, Math.min(0.95,
-          (me.clientY - rect.top) / rect.height));
+        splitState.rowPositions[idx] = pos;
+        divider.style.top = (pos * 100) + '%';
       }
-      renderSplitDividers();
-    };
+      updateTileOverlays(wrap);
+    }
 
-    const onUp = () => divider.removeEventListener('pointermove', onMove);
     divider.addEventListener('pointermove', onMove);
-    divider.addEventListener('pointerup', onUp, {once: true});
-  });
-}
-
-function renderSplitOffsets() {
-  const container = document.getElementById('split-offsets');
-  container.innerHTML = '';
-  const total = splitState.cols * splitState.rows;
-  if (total <= 1) return;
-
-  const title = document.createElement('div');
-  title.className = 'split-offsets-title';
-  title.textContent = 'Desplazamendua tile bakoitzean (mm)';
-  container.appendChild(title);
-
-  for (let i = 0; i < total; i++) {
-    const c = i % splitState.cols;
-    const r = Math.floor(i / splitState.cols);
-    const tileDiv = document.createElement('div');
-    tileDiv.className = 'split-offset-tile';
-    tileDiv.innerHTML = `
-      <div class="split-offset-tile-label">Tile ${r + 1}.${c + 1}</div>
-      <div class="split-offset-inputs">
-        <div class="split-offset-input-wrap">
-          <span>X (mm)</span>
-          <input type="number" value="${(splitState.offsets[i] || {}).x_mm || 0}" step="0.5" data-tile="${i}" data-axis="x" />
-        </div>
-        <div class="split-offset-input-wrap">
-          <span>Y (mm)</span>
-          <input type="number" value="${(splitState.offsets[i] || {}).y_mm || 0}" step="0.5" data-tile="${i}" data-axis="y" />
-        </div>
-      </div>`;
-    container.appendChild(tileDiv);
-  }
-
-  container.querySelectorAll('input[type="number"]').forEach(inp => {
-    inp.addEventListener('input', () => {
-      const i = parseInt(inp.dataset.tile);
-      if (!splitState.offsets[i]) splitState.offsets[i] = {x_mm: 0, y_mm: 0};
-      const v = parseFloat(inp.value) || 0;
-      if (inp.dataset.axis === 'x') splitState.offsets[i].x_mm = v;
-      else splitState.offsets[i].y_mm = v;
-    });
+    divider.addEventListener('pointerup', () => {
+      divider.removeEventListener('pointermove', onMove);
+    }, { once: true });
   });
 }
 
@@ -726,17 +688,13 @@ function wireSplitControls() {
   document.getElementById('split-cols').addEventListener('change', () => {
     splitState.cols = Math.max(1, parseInt(document.getElementById('split-cols').value) || 2);
     splitState.colPositions = Array.from({length: splitState.cols - 1}, (_, i) => (i + 1) / splitState.cols);
-    splitState.offsets = Array.from({length: splitState.cols * splitState.rows}, () => ({x_mm: 0, y_mm: 0}));
     renderSplitDividers();
-    renderSplitOffsets();
   });
 
   document.getElementById('split-rows').addEventListener('change', () => {
     splitState.rows = Math.max(1, parseInt(document.getElementById('split-rows').value) || 1);
     splitState.rowPositions = Array.from({length: splitState.rows - 1}, (_, i) => (i + 1) / splitState.rows);
-    splitState.offsets = Array.from({length: splitState.cols * splitState.rows}, () => ({x_mm: 0, y_mm: 0}));
     renderSplitDividers();
-    renderSplitOffsets();
   });
 
   document.getElementById('split-overlap').addEventListener('input', () => {
@@ -750,11 +708,14 @@ function wireSplitControls() {
 
   document.getElementById('btn-split-rotate').addEventListener('click', () => {
     splitState.rotation = (splitState.rotation + 90) % 360;
-    const btn = document.getElementById('btn-split-rotate');
-    const labels = ['↻ 0° — Klikatu biratzeko', '↻ 90° CW', '↻ 180°', '↻ 270° CW'];
-    btn.textContent = labels[splitState.rotation / 90];
-    // Rotate preview image visually
-    document.getElementById('split-preview-img').style.transform = `rotate(${splitState.rotation}deg)`;
+    const labels = ['↻ 0°', '↻ 90°', '↻ 180°', '↻ 270°'];
+    document.getElementById('btn-split-rotate').textContent = labels[splitState.rotation / 90];
+    // Reload preview from server with rotation applied
+    const img = document.getElementById('split-preview-img');
+    img.src = '';
+    img.onload = () => renderSplitDividers();
+    const rotParam = splitState.rotation ? `?rotation=${splitState.rotation}` : '';
+    img.src = `/api/prints/${splitState.printId}/preview${rotParam}`;
   });
 
   document.getElementById('modal-split').addEventListener('click', e => {
@@ -775,7 +736,6 @@ async function submitSplit() {
       overlap_mm: splitState.overlapMm,
       col_positions: splitState.colPositions.length ? splitState.colPositions : null,
       row_positions: splitState.rowPositions.length ? splitState.rowPositions : null,
-      offsets: splitState.offsets,
       rotation: splitState.rotation,
     });
     closeSplitModal();

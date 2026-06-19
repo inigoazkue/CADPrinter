@@ -90,6 +90,93 @@ def generate_sheet_preview(
         return False
 
 
+def generate_rotated_preview(pdf_path: str, rotation: int, width_px: int = 300):
+    """Return PNG bytes of the first page rotated by rotation degrees (90/180/270)."""
+    try:
+        src = fitz.open(pdf_path)
+        src_page = src[0]
+        rot = rotation % 360
+        if rot in (90, 270):
+            rw, rh = src_page.rect.height, src_page.rect.width
+        else:
+            rw, rh = src_page.rect.width, src_page.rect.height
+        out = fitz.open()
+        page = out.new_page(width=rw, height=rh)
+        page.show_pdf_page(page.rect, src, 0, rotate=rot)
+        scale = width_px / rw
+        mat = fitz.Matrix(scale, scale)
+        pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=fitz.csRGB)
+        data = pix.tobytes("png")
+        src.close()
+        out.close()
+        return data
+    except Exception as e:
+        print(f"[rotated_preview] Error: {e}")
+        return None
+
+
+def generate_grid_preview(
+    tile_items: list,
+    cols: int,
+    rows: int,
+    preview_path: str,
+    width_px: int = 500,
+) -> bool:
+    """
+    Compose split tiles into a side-by-side grid preview.
+    tile_items: list of (pdf_path, col, row) tuples.
+    """
+    try:
+        if not tile_items:
+            return False
+        # Determine cell size from first available tile
+        tw, th = PAGE_SIZES_PT["A3"]
+        for path, _, _ in tile_items:
+            if path and os.path.exists(path):
+                try:
+                    doc = fitz.open(path)
+                    tw, th = doc[0].rect.width, doc[0].rect.height
+                    doc.close()
+                    break
+                except Exception:
+                    pass
+
+        canvas_w = tw * cols
+        canvas_h = th * rows
+        out = fitz.open()
+        page = out.new_page(width=canvas_w, height=canvas_h)
+        page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
+
+        for path, col, row in tile_items:
+            if path and os.path.exists(path):
+                try:
+                    src = fitz.open(path)
+                    dest = fitz.Rect(col * tw, row * th, (col + 1) * tw, (row + 1) * th)
+                    page.show_pdf_page(dest, src, 0)
+                    src.close()
+                except Exception as e:
+                    print(f"[grid_preview] Skipping {path}: {e}")
+
+        for c in range(1, cols):
+            x = c * tw
+            page.draw_line(fitz.Point(x, 0), fitz.Point(x, canvas_h),
+                           color=(0.4, 0.4, 0.4), width=3)
+        for r in range(1, rows):
+            y = r * th
+            page.draw_line(fitz.Point(0, y), fitz.Point(canvas_w, y),
+                           color=(0.4, 0.4, 0.4), width=3)
+
+        scale = width_px / canvas_w
+        mat = fitz.Matrix(scale, scale)
+        pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=fitz.csRGB)
+        pix.save(preview_path)
+        out.close()
+        return True
+    except Exception as e:
+        print(f"[grid_preview] Error: {e}")
+        return False
+
+
 def split_pdf_tiles(
     pdf_path: str,
     output_dir: str,
@@ -170,17 +257,20 @@ def split_pdf_tiles(
 
 
 def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str,
-                   sheets_offsets: list = None) -> bool:
+                   sheets_offsets: list = None, sheet_formats: list = None) -> bool:
     """
     Build final multi-page PDF.
     sheets_pdf_paths: one list of pdf paths per sheet (overlaid → one output page).
     sheets_offsets: parallel list of offset lists per sheet, each offset is {"x_mm", "y_mm"}.
+    sheet_formats: optional per-page format override (e.g. tile pages use tile format).
     """
     try:
-        fw, fh = PAGE_SIZES_PT.get(fmt, PAGE_SIZES_PT["A3"])
         out = fitz.open()
 
         for sheet_idx, sheet_paths in enumerate(sheets_pdf_paths):
+            page_fmt = (sheet_formats[sheet_idx]
+                        if sheet_formats and sheet_idx < len(sheet_formats) else None) or fmt
+            fw, fh = PAGE_SIZES_PT.get(page_fmt, PAGE_SIZES_PT["A3"])
             page = out.new_page(width=fw, height=fh)
             page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
             sheet_off_list = (sheets_offsets[sheet_idx]

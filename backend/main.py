@@ -9,7 +9,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -203,18 +203,32 @@ def export_job(job_id: int):
 
         sheets_paths = []
         sheets_offsets = []
+        sheet_formats = []
         for sheet in job["sheets"]:
             enabled = [p for p in sheet["prints"] if p["enabled"]]
-            if enabled:
+            if not enabled:
+                continue
+            tile_prints = sorted(
+                [p for p in enabled if p.get("tile_col") is not None],
+                key=lambda p: (p.get("tile_row") or 0) * 100 + (p.get("tile_col") or 0)
+            )
+            if tile_prints:
+                for tp in tile_prints:
+                    sheets_paths.append([str(db.PRINTS_DIR / tp["filename"])])
+                    sheets_offsets.append([{"x_mm": 0, "y_mm": 0}])
+                    sheet_formats.append(tp.get("format") or job["format"])
+            else:
                 sheets_paths.append([str(db.PRINTS_DIR / p["filename"]) for p in enabled])
                 sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0} for p in enabled])
+                sheet_formats.append(job["format"])
 
         if not sheets_paths:
             raise HTTPException(400, "No hay capas habilitadas para exportar")
 
         out_name = f"export_{job_id}_{uuid.uuid4().hex[:6]}.pdf"
         out_path = db.DATA_DIR / out_name
-        ok = pdf_utils.export_job_pdf(sheets_paths, job["format"], str(out_path), sheets_offsets=sheets_offsets)
+        ok = pdf_utils.export_job_pdf(sheets_paths, job["format"], str(out_path),
+                                      sheets_offsets=sheets_offsets, sheet_formats=sheet_formats)
         if not ok:
             raise HTTPException(500, "Error generando PDF")
 
@@ -304,10 +318,20 @@ def sheet_preview(sheet_id: int):
             "SELECT * FROM prints WHERE sheet_id = ? AND enabled = 1 ORDER BY order_num, received_at",
             (sheet_id,)
         ).fetchall()
-        paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
-        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
         preview_path = str(db.PREVIEWS_DIR / f"sheet_{sheet_id}_combined.png")
-        pdf_utils.generate_sheet_preview(paths, job["format"], preview_path, offsets=offsets)
+
+        tile_prints = [p for p in prints if p["tile_col"] is not None]
+        if tile_prints:
+            tile_items = [(str(db.PRINTS_DIR / p["filename"]), p["tile_col"], p["tile_row"])
+                          for p in tile_prints]
+            cols = max(t[1] for t in tile_items) + 1
+            rows = max(t[2] for t in tile_items) + 1
+            pdf_utils.generate_grid_preview(tile_items, cols, rows, preview_path)
+        else:
+            paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
+            offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
+            pdf_utils.generate_sheet_preview(paths, job["format"], preview_path, offsets=offsets)
+
         if not os.path.exists(preview_path):
             raise HTTPException(500, "Error generating preview")
         return FileResponse(preview_path, media_type="image/png",
@@ -342,12 +366,21 @@ async def upload_print(sheet_id: int, file: UploadFile = File(...)):
 
 
 @app.get("/api/prints/{print_id}/preview")
-def print_preview(print_id: int):
+def print_preview(print_id: int, rotation: int = 0):
     conn = db.get_db()
     try:
         p = conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone()
         if not p:
             raise HTTPException(404, "Print not found")
+
+        if rotation and rotation % 360 != 0:
+            pdf_path = str(db.PRINTS_DIR / p["filename"])
+            if os.path.exists(pdf_path):
+                data = pdf_utils.generate_rotated_preview(pdf_path, rotation)
+                if data:
+                    return Response(content=data, media_type="image/png",
+                                    headers={"Cache-Control": "no-store"})
+
         preview = p["preview_path"]
         if not preview or not os.path.exists(preview):
             raise HTTPException(404, "Preview not available")
@@ -419,7 +452,6 @@ class SplitParams(BaseModel):
     overlap_mm: float = 5.0
     col_positions: Optional[list] = None
     row_positions: Optional[list] = None
-    offsets: Optional[list] = None
     rotation: int = 0
 
 
@@ -447,37 +479,34 @@ async def split_print(print_id: int, body: SplitParams):
                 overlap_mm=body.overlap_mm,
                 col_positions=body.col_positions,
                 row_positions=body.row_positions,
-                offsets=body.offsets,
                 rotation=body.rotation,
             )
         except Exception as e:
             raise HTTPException(500, f"Split failed: {e}")
 
         job_id = p["job_id"]
-
-        # Move original to "Iturriak" sheet
-        src_order = db.db_next_sheet_order(conn, job_id)
-        conn.execute("INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Iturriak', ?)", (job_id, src_order))
-        source_sheet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute("UPDATE prints SET sheet_id = ?, enabled = 0 WHERE id = ?", (source_sheet_id, print_id))
-
-        tile_print_ids = []
-        tile_sheet_ids = []
-        base_id = _new_id()
+        original_sheet_id = p["sheet_id"]
         orig_name = p.get("original_name") or p["filename"]
+
+        # Move original to a new "Iturriak" sheet (disabled, for reference only)
+        src_order = db.db_next_sheet_order(conn, job_id)
+        conn.execute("INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Iturriak', ?)",
+                     (job_id, src_order))
+        source_sheet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.execute("UPDATE prints SET sheet_id = ?, enabled = 0 WHERE id = ?",
+                     (source_sheet_id, print_id))
+
+        # Insert all tiles on the ORIGINAL sheet with position metadata
+        tile_print_ids = []
+        base_id = _new_id()
+        tile_items_for_preview = []
 
         for i, tile_path in enumerate(tile_paths):
             col = i % body.cols
             row_i = i // body.cols
             tile_filename = Path(tile_path).name
-            tile_orig_name = f"panel_{i+1}_{orig_name}"
+            tile_orig_name = f"panel_{row_i+1}.{col+1}_{orig_name}"
             tile_id = (base_id + i) % (2 ** 31)
-
-            # Create a dedicated sheet for this tile
-            t_order = db.db_next_sheet_order(conn, job_id)
-            panel_name = f"Panel {i + 1}"
-            conn.execute("INSERT INTO sheets (job_id, name, order_num) VALUES (?, ?, ?)", (job_id, panel_name, t_order))
-            tile_sheet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
             preview_path = str(db.PREVIEWS_DIR / f"{tile_id}.png")
             pdf_utils.generate_preview(tile_path, preview_path)
@@ -485,15 +514,23 @@ async def split_print(print_id: int, body: SplitParams):
                 preview_path = None
 
             conn.execute("""
-                INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num, format, source_user, enabled)
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 1)
-            """, (tile_id, job_id, tile_sheet_id, tile_filename, tile_orig_name, preview_path, body.tile_format, p["source_user"]))
+                INSERT INTO prints
+                  (id, job_id, sheet_id, filename, original_name, preview_path,
+                   order_num, format, source_user, enabled, tile_col, tile_row)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+            """, (tile_id, job_id, original_sheet_id, tile_filename, tile_orig_name,
+                  preview_path, i + 1, body.tile_format, p["source_user"], col, row_i))
             tile_print_ids.append(tile_id)
-            tile_sheet_ids.append(tile_sheet_id)
+            tile_items_for_preview.append((tile_path, col, row_i))
+
+        # Generate grid preview for the result sheet
+        grid_preview_path = str(db.PREVIEWS_DIR / f"sheet_{original_sheet_id}_combined.png")
+        pdf_utils.generate_grid_preview(tile_items_for_preview, body.cols, body.rows,
+                                        grid_preview_path)
 
         conn.commit()
         await broadcast("job_updated", {"job_id": job_id})
-        return {"tile_print_ids": tile_print_ids, "tile_sheet_ids": tile_sheet_ids}
+        return {"tile_print_ids": tile_print_ids}
     finally:
         conn.close()
 
