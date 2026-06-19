@@ -54,6 +54,8 @@ user_active_jobs (source_user PK, job_id FK → jobs)
 - `source_user`: nombre de usuario limpio extraído del dominio Windows (`EITB\azkue_inigo` → `azkue_inigo`). NULL para trabajos sin usuario.
 - `user_active_jobs`: tabla que mapea cada usuario a su trabajo activo. Independiente de `is_current`.
 - `GET /api/jobs` devuelve `{"jobs": [...], "userActiveJobs": {user: job_id}}`.
+- `POST /api/jobs` acepta `source_user` (opcional) y `activate` (bool). Si se pasa `source_user`, el trabajo se crea sin activar globalmente y se asigna como activo del usuario si `activate=true`.
+- El modal "Lan berria" puebla dinámicamente un desplegable de usuarios con los `source_user` distintos de los trabajos existentes.
 
 ## Flujo multi-usuario
 

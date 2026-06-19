@@ -91,19 +91,31 @@ def get_current_job():
         conn.close()
 
 
+VALID_FORMATS = {"A0", "A1", "A2", "A3", "A4", "A5", "A6"}
+
+
 class JobCreate(BaseModel):
     name: str
-    format: str = "A3"  # A3 | A4
+    format: str = "A3"
+    source_user: Optional[str] = None
+    activate: bool = True
 
 
 @app.post("/api/jobs", status_code=201)
 async def create_job(body: JobCreate):
-    if body.format not in ("A3", "A4"):
-        raise HTTPException(400, "format must be A3 or A4")
+    if body.format not in VALID_FORMATS:
+        raise HTTPException(400, f"format must be one of {', '.join(sorted(VALID_FORMATS))}")
+    source_user = body.source_user.strip() if body.source_user else None
     conn = db.get_db()
     try:
-        job_id = db.db_create_job(conn, body.name.strip(), body.format)
+        activate_globally = (not source_user) and body.activate
+        job_id = db.db_create_job(conn, body.name.strip(), body.format,
+                                   activate_globally=activate_globally,
+                                   source_user=source_user)
         conn.commit()
+        if source_user and body.activate:
+            db.db_set_user_active_job(conn, source_user, job_id)
+            conn.commit()
         job = db.db_get_job_full(conn, job_id)
         await broadcast("job_created", {"job_id": job_id})
         return job

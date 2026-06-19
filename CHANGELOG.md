@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.2.0 — 2026-06-19
+
+Asignación de usuario al crear un trabajo desde la interfaz web.
+
+### Nuevas funcionalidades
+
+**Selector de usuario en el modal "Lan berria"**
+- Al crear un trabajo se puede asignar a cualquier usuario que ya haya imprimido alguna vez
+- El desplegable se puebla dinámicamente con los usuarios conocidos (extraídos de los trabajos existentes)
+- Si se selecciona un usuario y la casilla "Aktibatu lan aktibo gisa" está marcada, el trabajo se convierte automáticamente en el trabajo activo de ese usuario
+- La opción "Ez (lan generikoa)" mantiene el comportamiento anterior (trabajo sin usuario)
+
+---
+
 ## v2.1.0 — 2026-06-19
 
 Soporte completo de formatos ISO 216: A0, A1, A2, A5 y A6 añadidos además de los A3 y A4 ya existentes.

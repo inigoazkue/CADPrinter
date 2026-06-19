@@ -16,7 +16,7 @@
         <img src="/img/Eitb_corp.svg.png" class="eitb-logo" alt="EITB" />
         <div class="brand-text">
           <span class="logo">CAD Printer</span>
-          <span class="version-tag">v2.1.0</span>
+          <span class="version-tag">v2.2.0</span>
         </div>
       </div>
       <button class="btn-icon" id="btn-new-job" title="Lan berria">+</button>
@@ -70,6 +70,11 @@
       <div class="modal-body">
         <label>Izena
           <input type="text" id="new-job-name" placeholder="Koadro elektrikoa-01" autocomplete="off" />
+        </label>
+        <label>Erabiltzailea
+          <select id="new-job-user">
+            <option value="">— Ez (lan generikoa) —</option>
+          </select>
         </label>
         <label>Orri-formatua
           <select id="new-job-format">

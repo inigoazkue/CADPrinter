@@ -26,7 +26,11 @@ const API = {
   getJobs:         ()           => API.request('GET', '/jobs'),
   activateUserJob: (user, id)  => API.request('POST', `/users/${encodeURIComponent(user)}/jobs/${id}/activate`),
   getJob:          (id)         => API.request('GET', `/jobs/${id}`),
-  createJob:       (name, fmt)  => API.request('POST', '/jobs', { name, format: fmt }),
+  createJob:       (name, fmt, sourceUser, activate) => API.request('POST', '/jobs', {
+    name, format: fmt,
+    ...(sourceUser ? { source_user: sourceUser } : {}),
+    activate: activate !== false,
+  }),
   updateJob:       (id, data)   => API.request('PATCH', `/jobs/${id}`, data),
   deleteJob:       (id)         => API.request('DELETE', `/jobs/${id}`),
   activateJob:     (id)         => API.request('POST', `/jobs/${id}/activate`),
@@ -440,6 +444,17 @@ function openNewJobModal() {
   document.getElementById('new-job-name').value = '';
   document.getElementById('new-job-format').value = 'A3';
   document.getElementById('new-job-activate').checked = true;
+
+  const userSelect = document.getElementById('new-job-user');
+  userSelect.innerHTML = '<option value="">— Ez (lan generikoa) —</option>';
+  const users = [...new Set(state.jobs.map(j => j.source_user).filter(Boolean))].sort();
+  for (const user of users) {
+    const opt = document.createElement('option');
+    opt.value = user;
+    opt.textContent = user;
+    userSelect.appendChild(opt);
+  }
+
   document.getElementById('modal-new-job').classList.remove('hidden');
   setTimeout(() => document.getElementById('new-job-name').focus(), 50);
 }
@@ -449,12 +464,14 @@ function closeNewJobModal() {
 }
 
 async function submitNewJob() {
-  const name = document.getElementById('new-job-name').value.trim();
-  const fmt  = document.getElementById('new-job-format').value;
+  const name     = document.getElementById('new-job-name').value.trim();
+  const fmt      = document.getElementById('new-job-format').value;
+  const user     = document.getElementById('new-job-user').value || null;
+  const activate = document.getElementById('new-job-activate').checked;
   if (!name) { document.getElementById('new-job-name').focus(); return; }
 
   await safeCall(async () => {
-    const job = await API.createJob(name, fmt);
+    const job = await API.createJob(name, fmt, user, activate);
     closeNewJobModal();
     await loadJobs();
     await selectJob(job.id);
