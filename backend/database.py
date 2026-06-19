@@ -63,6 +63,10 @@ def init_db():
         conn.execute("ALTER TABLE prints ADD COLUMN format TEXT")
     if 'source_user' not in print_cols:
         conn.execute("ALTER TABLE prints ADD COLUMN source_user TEXT")
+    if 'offset_x_mm' not in print_cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN offset_x_mm REAL DEFAULT 0")
+    if 'offset_y_mm' not in print_cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN offset_y_mm REAL DEFAULT 0")
     job_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)")]
     if 'source_user' not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN source_user TEXT")

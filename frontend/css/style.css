@@ -864,16 +864,22 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 3px;
-  background: var(--primary);
+  width: 20px;
   cursor: col-resize;
   transform: translateX(-50%);
   z-index: 10;
-  transition: background .1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-.split-divider-v:hover { background: #3A4F5A; }
-
+.split-divider-v::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%; transform: translateX(-50%);
+  width: 3px;
+  background: var(--primary);
+}
 .split-divider-v::after {
   content: '↔';
   position: absolute;
@@ -886,30 +892,40 @@ body {
   padding: 2px 4px;
   border-radius: 3px;
   white-space: nowrap;
+  pointer-events: none;
 }
 
 .split-divider-h {
   position: absolute;
   left: 0;
   right: 0;
-  height: 3px;
-  background: var(--primary);
+  height: 20px;
   cursor: row-resize;
   transform: translateY(-50%);
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
+.split-divider-h::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%; transform: translateY(-50%);
+  height: 3px;
+  background: var(--primary);
+}
 .split-divider-h::after {
   content: '↕';
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   background: var(--primary);
   color: #fff;
   font-size: 9px;
   padding: 2px 4px;
   border-radius: 3px;
+  pointer-events: none;
 }
 
 .split-tile-overlay {
@@ -1032,6 +1048,58 @@ body {
 /* split button on print thumbs */
 .ctrl-btn.split-btn { color: #4B7A8E; }
 .ctrl-btn.split-btn:hover { background: #EEF4F7; color: #2A5A6E; }
+
+/* print offset panel */
+.print-offset-panel {
+  display: none;
+  padding: 5px 6px 4px;
+  border-top: 1px solid var(--border);
+  background: #F2EEE9;
+  gap: 4px;
+  flex-direction: column;
+}
+.print-offset-panel.show { display: flex; }
+.offset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.offset-row input {
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  text-align: center;
+  background: #fff;
+}
+.offset-row span.unit { color: var(--text-muted); font-size: 10px; }
+
+/* move/position ctrl-btn */
+.ctrl-btn.move-btn { color: #5B8A9E; }
+.ctrl-btn.move-btn:hover { background: #EAF2F6; color: #2E6D85; }
+.ctrl-btn.move-btn.active { background: #D5E8F0; color: #1A5A72; }
+
+/* rotate button in split controls */
+.split-rotate-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  transition: background .12s;
+  width: 100%;
+  justify-content: center;
+}
+.split-rotate-btn:hover { background: var(--border); }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
 #main::-webkit-scrollbar { width: 5px; }

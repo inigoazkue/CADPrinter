@@ -1,5 +1,39 @@
 # Changelog
 
+## v2.4.0 — 2026-06-18
+
+Mejoras en el split interactivo: rotación del origen, líneas de corte con área de arrastre ampliada, corrección de tiles invisibles en la preview, y editor de posición X/Y por capa en la vista combinada.
+
+### Nuevas funcionalidades
+
+**Rotación del PDF origen en el modal de split**
+- Botón "↻ Klikatu biratzeko" que cicla entre 0°, 90°, 180° y 270°
+- La preview rota visualmente en el modal
+- El split se aplica al PDF rotado: permite cortar en el otro sentido (horizontal/vertical)
+
+**Editor de posición X/Y por capa**
+- Cada capa (print) tiene un panel desplegable con inputs de desplazamiento en mm (X e Y)
+- El desplazamiento se aplica en la preview combinada de la hoja en tiempo real (600ms debounce)
+- Los offsets se guardan en la base de datos (`offset_x_mm`, `offset_y_mm`) y se aplican también en la exportación final
+
+### Correcciones
+
+**Líneas de corte difíciles de arrastrar**
+- El área de clic de los divisores pasa de 3px a 20px (zona transparente)
+- Un pseudo-elemento `::before` mantiene la línea visual de 3px
+- Ahora se pueden arrastrar con normalidad
+
+**Tile 1 invisible en la preview de hoja**
+- Los tiles generados por el split se asignaban todos a la misma hoja; el tile 2 tapaba al tile 1 en el overlay
+- Corrección: cada tile se crea en su propia hoja dedicada ("Panel 1", "Panel 2"…)
+- El original se mueve a una hoja "Iturriak" (deshabilitado)
+
+### Base de datos
+
+- Columnas `offset_x_mm` y `offset_y_mm` añadidas a la tabla `prints` (con migración automática)
+
+---
+
 ## v2.3.0 — 2026-06-19
 
 División interactiva de PDFs grandes en tiles A3 para impresión en rotulación.

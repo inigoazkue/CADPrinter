@@ -72,6 +72,10 @@ function iconPrinter(size = 13) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`;
 }
 
+function iconMove(size = 11) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>`;
+}
+
 /* ── Render helpers ────────────────────────────────────────────────────── */
 function el(tag, cls, html) {
   const e = document.createElement(tag);
@@ -326,6 +330,7 @@ function renderSheet(sheet, fmt) {
   if (sheet.prints.some(p => p.enabled)) {
     const img = el('img', 'sheet-preview-img');
     img.alt = 'Aurrebista';
+    img.dataset.sheetPreview = sheet.id;
     img.src = API.sheetPreviewUrl(sheet.id);
     img.onerror = () => img.style.display = 'none';
     previewCol.appendChild(img);
@@ -381,9 +386,47 @@ function renderPrint(p, sheetId, jobFmt) {
     controls.appendChild(splitBtn);
   }
 
+  const moveBtn = el('button', 'ctrl-btn move-btn', iconMove());
+  moveBtn.title = 'Posizioa aldatu (mm)';
+  moveBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    const panel = thumb.querySelector('.print-offset-panel');
+    panel.classList.toggle('show');
+    moveBtn.classList.toggle('active', panel.classList.contains('show'));
+  });
+  controls.appendChild(moveBtn);
+
   thumb.appendChild(img);
   thumb.appendChild(footer);
   thumb.appendChild(controls);
+
+  const offsetPanel = el('div', 'print-offset-panel');
+  const xInput = el('input');
+  xInput.type = 'number'; xInput.value = p.offset_x_mm || 0; xInput.step = '1'; xInput.min = '-300'; xInput.max = '300';
+  const yInput = el('input');
+  yInput.type = 'number'; yInput.value = p.offset_y_mm || 0; yInput.step = '1'; yInput.min = '-300'; yInput.max = '300';
+
+  const rowX = el('div', 'offset-row');
+  rowX.append(Object.assign(document.createElement('span'), {textContent: 'X'}), xInput, Object.assign(document.createElement('span'), {className: 'unit', textContent: 'mm'}));
+  const rowY = el('div', 'offset-row');
+  rowY.append(Object.assign(document.createElement('span'), {textContent: 'Y'}), yInput, Object.assign(document.createElement('span'), {className: 'unit', textContent: 'mm'}));
+  offsetPanel.append(rowX, rowY);
+
+  let offsetTimer = null;
+  const applyOffset = () => {
+    clearTimeout(offsetTimer);
+    offsetTimer = setTimeout(async () => {
+      const ox = parseFloat(xInput.value) || 0;
+      const oy = parseFloat(yInput.value) || 0;
+      await safeCall(() => API.updatePrint(p.id, { offset_x_mm: ox, offset_y_mm: oy }));
+      // Refresh sheet preview without full re-render
+      const sheetPreviewImg = document.querySelector(`img[data-sheet-preview="${p.sheet_id}"]`);
+      if (sheetPreviewImg) sheetPreviewImg.src = API.sheetPreviewUrl(p.sheet_id);
+    }, 600);
+  };
+  xInput.addEventListener('input', applyOffset);
+  yInput.addEventListener('input', applyOffset);
+  thumb.appendChild(offsetPanel);
 
   if (p.format && jobFmt && p.format !== jobFmt) {
     const warn = el('div', 'format-warn', `⚠ ${p.format}`);
@@ -527,6 +570,7 @@ const splitState = {
   overlapMm: 5,
   tileFormat: 'A3',
   offsets: [],
+  rotation: 0,
 };
 
 function autoTiles(fmt) {
@@ -547,11 +591,13 @@ function openSplitModal(printId, fmt) {
   splitState.tileFormat = 'A3';
   splitState.offsets = Array.from({length: cols * rows}, () => ({x_mm: 0, y_mm: 0}));
 
+  splitState.rotation = 0;
   document.getElementById('split-cols').value = cols;
   document.getElementById('split-rows').value = rows;
   document.getElementById('split-overlap').value = 5;
   document.getElementById('split-overlap-val').textContent = '5 mm';
   document.getElementById('split-tile-format').value = 'A3';
+  document.getElementById('btn-split-rotate').textContent = '↻ 0° — Klikatu biratzeko';
   document.getElementById('btn-submit-split').disabled = false;
   document.getElementById('btn-submit-split').textContent = 'Zatitu';
 
@@ -702,6 +748,15 @@ function wireSplitControls() {
     splitState.tileFormat = document.getElementById('split-tile-format').value;
   });
 
+  document.getElementById('btn-split-rotate').addEventListener('click', () => {
+    splitState.rotation = (splitState.rotation + 90) % 360;
+    const btn = document.getElementById('btn-split-rotate');
+    const labels = ['↻ 0° — Klikatu biratzeko', '↻ 90° CW', '↻ 180°', '↻ 270° CW'];
+    btn.textContent = labels[splitState.rotation / 90];
+    // Rotate preview image visually
+    document.getElementById('split-preview-img').style.transform = `rotate(${splitState.rotation}deg)`;
+  });
+
   document.getElementById('modal-split').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeSplitModal();
   });
@@ -721,6 +776,7 @@ async function submitSplit() {
       col_positions: splitState.colPositions.length ? splitState.colPositions : null,
       row_positions: splitState.rowPositions.length ? splitState.rowPositions : null,
       offsets: splitState.offsets,
+      rotation: splitState.rotation,
     });
     closeSplitModal();
     await loadJob(state.selectedJobId);

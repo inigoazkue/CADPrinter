@@ -55,6 +55,7 @@ def generate_sheet_preview(
     fmt: str,
     preview_path: str,
     width_px: int = 500,
+    offsets: list = None,
 ) -> bool:
     """Overlay all PDFs on a blank page and render as PNG."""
     try:
@@ -65,11 +66,15 @@ def generate_sheet_preview(
         # White background
         page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
 
-        for path in pdf_paths:
+        for path_idx, path in enumerate(pdf_paths):
             if path and os.path.exists(path):
                 try:
                     src = fitz.open(path)
-                    page.show_pdf_page(page.rect, src, 0)
+                    off = (offsets[path_idx] if offsets and path_idx < len(offsets) else None) or {}
+                    off_x = (off.get('x_mm') or 0) * PT_PER_MM
+                    off_y = (off.get('y_mm') or 0) * PT_PER_MM
+                    dest = fitz.Rect(off_x, off_y, fw + off_x, fh + off_y)
+                    page.show_pdf_page(dest, src, 0)
                     src.close()
                 except Exception as e:
                     print(f"[preview] Skipping {path}: {e}")
@@ -95,16 +100,30 @@ def split_pdf_tiles(
     col_positions: list = None,
     row_positions: list = None,
     offsets: list = None,
+    rotation: int = 0,
 ) -> list:
     """
     Split the first page of a PDF into cols×rows tiles of tile_format size.
     col_positions: normalized (0..1) vertical divider positions (len = cols-1).
     row_positions: normalized (0..1) horizontal divider positions (len = rows-1).
     offsets: per-tile dicts {"x_mm": float, "y_mm": float} to pan clip window.
+    rotation: degrees to rotate source page (0, 90, 180, 270).
     Returns list of output file paths in row-major order (left→right, top→bottom).
     """
     src_doc = fitz.open(pdf_path)
     src_page = src_doc[0]
+
+    if rotation and rotation % 360 != 0:
+        rotated = fitz.open()
+        if rotation in (90, 270):
+            rw, rh = src_page.rect.height, src_page.rect.width
+        else:
+            rw, rh = src_page.rect.width, src_page.rect.height
+        rpage = rotated.new_page(width=rw, height=rh)
+        rpage.show_pdf_page(rpage.rect, src_doc, 0, rotate=rotation)
+        src_doc = rotated
+        src_page = src_doc[0]
+
     src_w = src_page.rect.width
     src_h = src_page.rect.height
 
@@ -150,23 +169,34 @@ def split_pdf_tiles(
     return tile_paths
 
 
-def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str) -> bool:
+def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str,
+                   sheets_offsets: list = None) -> bool:
     """
     Build final multi-page PDF.
     sheets_pdf_paths: one list of pdf paths per sheet (overlaid → one output page).
+    sheets_offsets: parallel list of offset lists per sheet, each offset is {"x_mm", "y_mm"}.
     """
     try:
         fw, fh = PAGE_SIZES_PT.get(fmt, PAGE_SIZES_PT["A3"])
         out = fitz.open()
 
-        for sheet_paths in sheets_pdf_paths:
+        for sheet_idx, sheet_paths in enumerate(sheets_pdf_paths):
             page = out.new_page(width=fw, height=fh)
             page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
-            for path in sheet_paths:
+            sheet_off_list = (sheets_offsets[sheet_idx]
+                              if sheets_offsets and sheet_idx < len(sheets_offsets)
+                              else None)
+            for path_idx, path in enumerate(sheet_paths):
                 if path and os.path.exists(path):
                     try:
                         src = fitz.open(path)
-                        page.show_pdf_page(page.rect, src, 0)
+                        off = (sheet_off_list[path_idx]
+                               if sheet_off_list and path_idx < len(sheet_off_list)
+                               else None) or {}
+                        off_x = (off.get('x_mm') or 0) * PT_PER_MM
+                        off_y = (off.get('y_mm') or 0) * PT_PER_MM
+                        dest = fitz.Rect(off_x, off_y, fw + off_x, fh + off_y)
+                        page.show_pdf_page(dest, src, 0)
                         src.close()
                     except Exception as e:
                         print(f"[export] Skipping {path}: {e}")

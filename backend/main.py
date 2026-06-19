@@ -202,20 +202,19 @@ def export_job(job_id: int):
             raise HTTPException(404, "Job not found")
 
         sheets_paths = []
+        sheets_offsets = []
         for sheet in job["sheets"]:
-            enabled = [
-                str(db.PRINTS_DIR / p["filename"])
-                for p in sheet["prints"] if p["enabled"]
-            ]
+            enabled = [p for p in sheet["prints"] if p["enabled"]]
             if enabled:
-                sheets_paths.append(enabled)
+                sheets_paths.append([str(db.PRINTS_DIR / p["filename"]) for p in enabled])
+                sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0} for p in enabled])
 
         if not sheets_paths:
             raise HTTPException(400, "No hay capas habilitadas para exportar")
 
         out_name = f"export_{job_id}_{uuid.uuid4().hex[:6]}.pdf"
         out_path = db.DATA_DIR / out_name
-        ok = pdf_utils.export_job_pdf(sheets_paths, job["format"], str(out_path))
+        ok = pdf_utils.export_job_pdf(sheets_paths, job["format"], str(out_path), sheets_offsets=sheets_offsets)
         if not ok:
             raise HTTPException(500, "Error generando PDF")
 
@@ -306,8 +305,9 @@ def sheet_preview(sheet_id: int):
             (sheet_id,)
         ).fetchall()
         paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
+        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
         preview_path = str(db.PREVIEWS_DIR / f"sheet_{sheet_id}_combined.png")
-        pdf_utils.generate_sheet_preview(paths, job["format"], preview_path)
+        pdf_utils.generate_sheet_preview(paths, job["format"], preview_path, offsets=offsets)
         if not os.path.exists(preview_path):
             raise HTTPException(500, "Error generating preview")
         return FileResponse(preview_path, media_type="image/png",
@@ -361,6 +361,8 @@ class PrintUpdate(BaseModel):
     enabled: Optional[bool] = None
     sheet_id: Optional[int] = None
     order_num: Optional[int] = None
+    offset_x_mm: Optional[float] = None
+    offset_y_mm: Optional[float] = None
 
 
 @app.patch("/api/prints/{print_id}")
@@ -380,6 +382,10 @@ async def update_print(print_id: int, body: PrintUpdate):
             conn.execute("UPDATE prints SET sheet_id = ? WHERE id = ?", (body.sheet_id, print_id))
         if body.order_num is not None:
             conn.execute("UPDATE prints SET order_num = ? WHERE id = ?", (body.order_num, print_id))
+        if body.offset_x_mm is not None:
+            conn.execute("UPDATE prints SET offset_x_mm = ? WHERE id = ?", (body.offset_x_mm, print_id))
+        if body.offset_y_mm is not None:
+            conn.execute("UPDATE prints SET offset_y_mm = ? WHERE id = ?", (body.offset_y_mm, print_id))
         conn.commit()
         await broadcast("print_updated", {"print_id": print_id, "job_id": p["job_id"]})
         return dict(conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone())
@@ -414,6 +420,7 @@ class SplitParams(BaseModel):
     col_positions: Optional[list] = None
     row_positions: Optional[list] = None
     offsets: Optional[list] = None
+    rotation: int = 0
 
 
 @app.post("/api/prints/{print_id}/split")
@@ -441,28 +448,21 @@ async def split_print(print_id: int, body: SplitParams):
                 col_positions=body.col_positions,
                 row_positions=body.row_positions,
                 offsets=body.offsets,
+                rotation=body.rotation,
             )
         except Exception as e:
             raise HTTPException(500, f"Split failed: {e}")
 
         job_id = p["job_id"]
-        sheet_id = p["sheet_id"]
 
-        # Move original to a new "Iturriak" sheet (disabled)
+        # Move original to "Iturriak" sheet
         src_order = db.db_next_sheet_order(conn, job_id)
-        conn.execute(
-            "INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Iturriak', ?)",
-            (job_id, src_order)
-        )
+        conn.execute("INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Iturriak', ?)", (job_id, src_order))
         source_sheet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        conn.execute(
-            "UPDATE prints SET sheet_id = ?, enabled = 0 WHERE id = ?",
-            (source_sheet_id, print_id)
-        )
+        conn.execute("UPDATE prints SET sheet_id = ?, enabled = 0 WHERE id = ?", (source_sheet_id, print_id))
 
-        # Add tile prints to original sheet
-        order_base = _next_print_order(conn, sheet_id)
         tile_print_ids = []
+        tile_sheet_ids = []
         base_id = _new_id()
         orig_name = p.get("original_name") or p["filename"]
 
@@ -470,8 +470,14 @@ async def split_print(print_id: int, body: SplitParams):
             col = i % body.cols
             row_i = i // body.cols
             tile_filename = Path(tile_path).name
-            tile_orig_name = f"tile_{row_i+1}x{col+1}_{orig_name}"
+            tile_orig_name = f"panel_{i+1}_{orig_name}"
             tile_id = (base_id + i) % (2 ** 31)
+
+            # Create a dedicated sheet for this tile
+            t_order = db.db_next_sheet_order(conn, job_id)
+            panel_name = f"Panel {i + 1}"
+            conn.execute("INSERT INTO sheets (job_id, name, order_num) VALUES (?, ?, ?)", (job_id, panel_name, t_order))
+            tile_sheet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
             preview_path = str(db.PREVIEWS_DIR / f"{tile_id}.png")
             pdf_utils.generate_preview(tile_path, preview_path)
@@ -479,17 +485,15 @@ async def split_print(print_id: int, body: SplitParams):
                 preview_path = None
 
             conn.execute("""
-                INSERT INTO prints
-                (id, job_id, sheet_id, filename, original_name, preview_path,
-                 order_num, format, source_user, enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-            """, (tile_id, job_id, sheet_id, tile_filename, tile_orig_name,
-                  preview_path, order_base + i, body.tile_format, p["source_user"]))
+                INSERT INTO prints (id, job_id, sheet_id, filename, original_name, preview_path, order_num, format, source_user, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, 1)
+            """, (tile_id, job_id, tile_sheet_id, tile_filename, tile_orig_name, preview_path, body.tile_format, p["source_user"]))
             tile_print_ids.append(tile_id)
+            tile_sheet_ids.append(tile_sheet_id)
 
         conn.commit()
-        await broadcast("print_updated", {"job_id": job_id, "sheet_id": sheet_id})
-        return {"tile_print_ids": tile_print_ids, "source_sheet_id": source_sheet_id}
+        await broadcast("job_updated", {"job_id": job_id})
+        return {"tile_print_ids": tile_print_ids, "tile_sheet_ids": tile_sheet_ids}
     finally:
         conn.close()
 
