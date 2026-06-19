@@ -16,7 +16,7 @@
         <img src="/img/Eitb_corp.svg.png" class="eitb-logo" alt="EITB" />
         <div class="brand-text">
           <span class="logo">CAD Printer</span>
-          <span class="version-tag">v2.2.0</span>
+          <span class="version-tag">v2.3.0</span>
         </div>
       </div>
       <button class="btn-icon" id="btn-new-job" title="Lan berria">+</button>
@@ -122,6 +122,52 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeFormatModal()">Utzi</button>
         <button class="btn btn-primary" onclick="submitFormat()">Gorde</button>
+      </div>
+    </div>
+  </div>
+
+<!-- ── Modal: Zatitu (split) ────────────────────────────────── -->
+  <div id="modal-split" class="modal-overlay hidden">
+    <div class="modal modal-split-content">
+      <div class="modal-header">
+        <h2>PDF zatitu tilesetan</h2>
+        <button class="btn-close" onclick="closeSplitModal()">✕</button>
+      </div>
+      <div class="modal-body split-modal-body">
+        <div class="split-left">
+          <div class="split-preview-wrap" id="split-preview-wrap">
+            <img id="split-preview-img" alt="Aurrebista" />
+          </div>
+          <p class="split-hint">Arrastatu lerro beltzak zatiketa-puntua aldatzeko</p>
+        </div>
+        <div class="split-right">
+          <div class="split-control-group">
+            <label>Zutabeak<input type="number" id="split-cols" value="2" min="1" max="8" /></label>
+            <label>Errenkadak<input type="number" id="split-rows" value="1" min="1" max="4" /></label>
+          </div>
+          <div class="split-control-group">
+            <label>Solapamendua
+              <div class="split-overlap-row">
+                <input type="range" id="split-overlap" min="0" max="30" value="5" />
+                <span id="split-overlap-val">5 mm</span>
+              </div>
+            </label>
+          </div>
+          <div class="split-control-group">
+            <label>Tile formatua
+              <select id="split-tile-format">
+                <option value="A3" selected>A3</option>
+                <option value="A4">A4</option>
+                <option value="A2">A2</option>
+              </select>
+            </label>
+          </div>
+          <div class="split-offsets" id="split-offsets"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closeSplitModal()">Utzi</button>
+        <button class="btn btn-primary" id="btn-submit-split" onclick="submitSplit()">Zatitu</button>
       </div>
     </div>
   </div>

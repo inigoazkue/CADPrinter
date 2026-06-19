@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.3.0 — 2026-06-19
+
+División interactiva de PDFs grandes en tiles A3 para impresión en rotulación.
+
+### Nuevas funcionalidades
+
+**Botón "Zatitu" en prints de gran formato**
+- Aparece automáticamente en prints detectados como A0, A1 o A2
+- Número de tiles auto-sugerido por formato: A2→2, A1→4, A0→8
+- Modal con vista previa del PDF dividida por líneas de corte arrastrables
+
+**División interactiva con líneas arrastrables**
+- Arrastra las líneas negras sobre la preview para mover el punto de corte
+- Solapamiento configurable entre tiles (0–30 mm) para margen de corte
+- Controles de pan X/Y por tile (en mm) para afinar la posición del contenido en cada A3
+
+**Enrutamiento del original**
+- El PDF original se mueve automáticamente a una nueva hoja "Iturriak" (deshabilitado)
+- Los tiles nuevos se crean en la hoja original como prints independientes
+
+**Backend**
+- Nueva función `split_pdf_tiles()` en pdf_utils usando `show_pdf_page` con clip rect de PyMuPDF
+- Endpoint `POST /api/prints/{id}/split` con parámetros: cols, rows, tile_format, overlap_mm, col_positions, row_positions, offsets
+
+---
+
 ## v2.2.0 — 2026-06-19
 
 Asignación de usuario al crear un trabajo desde la interfaz web.

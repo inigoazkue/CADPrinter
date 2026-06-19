@@ -404,6 +404,96 @@ async def delete_print(print_id: int):
         conn.close()
 
 
+# ── Split print ───────────────────────────────────────────────────────────────
+
+class SplitParams(BaseModel):
+    cols: int = 2
+    rows: int = 1
+    tile_format: str = "A3"
+    overlap_mm: float = 5.0
+    col_positions: Optional[list] = None
+    row_positions: Optional[list] = None
+    offsets: Optional[list] = None
+
+
+@app.post("/api/prints/{print_id}/split")
+async def split_print(print_id: int, body: SplitParams):
+    if body.tile_format not in VALID_FORMATS:
+        raise HTTPException(400, "invalid tile_format")
+    conn = db.get_db()
+    try:
+        p = conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone()
+        if not p:
+            raise HTTPException(404, "Print not found")
+        p = dict(p)
+        pdf_path = str(db.PRINTS_DIR / p["filename"])
+        if not os.path.exists(pdf_path):
+            raise HTTPException(404, "PDF file not found on disk")
+
+        try:
+            tile_paths = pdf_utils.split_pdf_tiles(
+                pdf_path=pdf_path,
+                output_dir=str(db.PRINTS_DIR),
+                cols=body.cols,
+                rows=body.rows,
+                tile_format=body.tile_format,
+                overlap_mm=body.overlap_mm,
+                col_positions=body.col_positions,
+                row_positions=body.row_positions,
+                offsets=body.offsets,
+            )
+        except Exception as e:
+            raise HTTPException(500, f"Split failed: {e}")
+
+        job_id = p["job_id"]
+        sheet_id = p["sheet_id"]
+
+        # Move original to a new "Iturriak" sheet (disabled)
+        src_order = db.db_next_sheet_order(conn, job_id)
+        conn.execute(
+            "INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Iturriak', ?)",
+            (job_id, src_order)
+        )
+        source_sheet_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.execute(
+            "UPDATE prints SET sheet_id = ?, enabled = 0 WHERE id = ?",
+            (source_sheet_id, print_id)
+        )
+
+        # Add tile prints to original sheet
+        order_base = _next_print_order(conn, sheet_id)
+        tile_print_ids = []
+        base_id = _new_id()
+        orig_name = p.get("original_name") or p["filename"]
+
+        for i, tile_path in enumerate(tile_paths):
+            col = i % body.cols
+            row_i = i // body.cols
+            tile_filename = Path(tile_path).name
+            tile_orig_name = f"tile_{row_i+1}x{col+1}_{orig_name}"
+            tile_id = (base_id + i) % (2 ** 31)
+
+            preview_path = str(db.PREVIEWS_DIR / f"{tile_id}.png")
+            pdf_utils.generate_preview(tile_path, preview_path)
+            if not os.path.exists(preview_path):
+                preview_path = None
+
+            conn.execute("""
+                INSERT INTO prints
+                (id, job_id, sheet_id, filename, original_name, preview_path,
+                 order_num, format, source_user, enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            """, (tile_id, job_id, sheet_id, tile_filename, tile_orig_name,
+                  preview_path, order_base + i, body.tile_format, p["source_user"]))
+            tile_print_ids.append(tile_id)
+
+        conn.commit()
+        await broadcast("print_updated", {"job_id": job_id, "sheet_id": sheet_id})
+        return {"tile_print_ids": tile_print_ids, "source_sheet_id": source_sheet_id}
+    finally:
+        conn.close()
+
+
 # ── Internal (called by watcher) ──────────────────────────────────────────────
 
 class InternalPrint(BaseModel):

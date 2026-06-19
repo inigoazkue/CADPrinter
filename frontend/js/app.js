@@ -43,6 +43,7 @@ const API = {
 
   deletePrint:     (id)         => API.request('DELETE', `/prints/${id}`),
   updatePrint:     (id, data)   => API.request('PATCH', `/prints/${id}`, data),
+  splitPrint:      (id, params) => API.request('POST', `/prints/${id}/split`, params),
   printPreviewUrl: (id)         => `/api/prints/${id}/preview`,
 
   async uploadPrint(sheetId, file) {
@@ -61,6 +62,10 @@ function iconTrash(size = 13) {
 
 function iconPencil(size = 13) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+}
+
+function iconSplit(size = 13) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="12" y1="2" x2="12" y2="22"/></svg>`;
 }
 
 function iconPrinter(size = 13) {
@@ -365,6 +370,17 @@ function renderPrint(p, sheetId, jobFmt) {
 
   controls.appendChild(toggleBtn);
   controls.appendChild(delBtn);
+
+  if (p.format && ['A0', 'A1', 'A2'].includes(p.format)) {
+    const splitBtn = el('button', 'ctrl-btn split-btn', iconSplit());
+    splitBtn.title = 'Zatitu tilesetan';
+    splitBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      openSplitModal(p.id, p.format);
+    });
+    controls.appendChild(splitBtn);
+  }
+
   thumb.appendChild(img);
   thumb.appendChild(footer);
   thumb.appendChild(controls);
@@ -501,6 +517,221 @@ async function submitFormat() {
 }
 
 
+/* ── Split modal ─────────────────────────────────────────────────────────── */
+const splitState = {
+  printId: null,
+  cols: 2,
+  rows: 1,
+  colPositions: [0.5],
+  rowPositions: [],
+  overlapMm: 5,
+  tileFormat: 'A3',
+  offsets: [],
+};
+
+function autoTiles(fmt) {
+  if (fmt === 'A2') return { cols: 2, rows: 1 };
+  if (fmt === 'A1') return { cols: 2, rows: 2 };
+  if (fmt === 'A0') return { cols: 4, rows: 2 };
+  return { cols: 2, rows: 1 };
+}
+
+function openSplitModal(printId, fmt) {
+  splitState.printId = printId;
+  const { cols, rows } = autoTiles(fmt);
+  splitState.cols = cols;
+  splitState.rows = rows;
+  splitState.colPositions = Array.from({length: cols - 1}, (_, i) => (i + 1) / cols);
+  splitState.rowPositions = Array.from({length: rows - 1}, (_, i) => (i + 1) / rows);
+  splitState.overlapMm = 5;
+  splitState.tileFormat = 'A3';
+  splitState.offsets = Array.from({length: cols * rows}, () => ({x_mm: 0, y_mm: 0}));
+
+  document.getElementById('split-cols').value = cols;
+  document.getElementById('split-rows').value = rows;
+  document.getElementById('split-overlap').value = 5;
+  document.getElementById('split-overlap-val').textContent = '5 mm';
+  document.getElementById('split-tile-format').value = 'A3';
+  document.getElementById('btn-submit-split').disabled = false;
+  document.getElementById('btn-submit-split').textContent = 'Zatitu';
+
+  const img = document.getElementById('split-preview-img');
+  img.src = '';
+  img.onload = () => renderSplitDividers();
+  img.src = API.printPreviewUrl(printId);
+
+  renderSplitOffsets();
+  document.getElementById('modal-split').classList.remove('hidden');
+}
+
+function closeSplitModal() {
+  document.getElementById('modal-split').classList.add('hidden');
+}
+
+function renderSplitDividers() {
+  const wrap = document.getElementById('split-preview-wrap');
+  wrap.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
+
+  const W = wrap.clientWidth;
+  const H = wrap.querySelector('img').clientHeight || wrap.clientHeight;
+
+  const colEdges = [0, ...splitState.colPositions.map(p => p * W), W];
+  const rowEdges = [0, ...splitState.rowPositions.map(p => p * H), H];
+
+  for (let r = 0; r < splitState.rows; r++) {
+    for (let c = 0; c < splitState.cols; c++) {
+      const ov = document.createElement('div');
+      ov.className = 'split-tile-overlay';
+      ov.style.left  = colEdges[c] + 'px';
+      ov.style.top   = rowEdges[r] + 'px';
+      ov.style.width  = (colEdges[c + 1] - colEdges[c]) + 'px';
+      ov.style.height = (rowEdges[r + 1] - rowEdges[r]) + 'px';
+      const lbl = document.createElement('div');
+      lbl.className = 'split-tile-label';
+      lbl.textContent = `T${r + 1}.${c + 1}`;
+      ov.appendChild(lbl);
+      wrap.appendChild(ov);
+    }
+  }
+
+  splitState.colPositions.forEach((pos, i) => {
+    const div = document.createElement('div');
+    div.className = 'split-divider-v';
+    div.style.left = (pos * 100) + '%';
+    makeDraggable(div, 'col', i, wrap);
+    wrap.appendChild(div);
+  });
+
+  splitState.rowPositions.forEach((pos, i) => {
+    const div = document.createElement('div');
+    div.className = 'split-divider-h';
+    div.style.top = (pos * 100) + '%';
+    makeDraggable(div, 'row', i, wrap);
+    wrap.appendChild(div);
+  });
+}
+
+function makeDraggable(divider, axis, idx, wrap) {
+  divider.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    divider.setPointerCapture(e.pointerId);
+    const rect = wrap.getBoundingClientRect();
+
+    const onMove = me => {
+      if (axis === 'col') {
+        splitState.colPositions[idx] = Math.max(0.05, Math.min(0.95,
+          (me.clientX - rect.left) / rect.width));
+      } else {
+        splitState.rowPositions[idx] = Math.max(0.05, Math.min(0.95,
+          (me.clientY - rect.top) / rect.height));
+      }
+      renderSplitDividers();
+    };
+
+    const onUp = () => divider.removeEventListener('pointermove', onMove);
+    divider.addEventListener('pointermove', onMove);
+    divider.addEventListener('pointerup', onUp, {once: true});
+  });
+}
+
+function renderSplitOffsets() {
+  const container = document.getElementById('split-offsets');
+  container.innerHTML = '';
+  const total = splitState.cols * splitState.rows;
+  if (total <= 1) return;
+
+  const title = document.createElement('div');
+  title.className = 'split-offsets-title';
+  title.textContent = 'Desplazamendua tile bakoitzean (mm)';
+  container.appendChild(title);
+
+  for (let i = 0; i < total; i++) {
+    const c = i % splitState.cols;
+    const r = Math.floor(i / splitState.cols);
+    const tileDiv = document.createElement('div');
+    tileDiv.className = 'split-offset-tile';
+    tileDiv.innerHTML = `
+      <div class="split-offset-tile-label">Tile ${r + 1}.${c + 1}</div>
+      <div class="split-offset-inputs">
+        <div class="split-offset-input-wrap">
+          <span>X (mm)</span>
+          <input type="number" value="${(splitState.offsets[i] || {}).x_mm || 0}" step="0.5" data-tile="${i}" data-axis="x" />
+        </div>
+        <div class="split-offset-input-wrap">
+          <span>Y (mm)</span>
+          <input type="number" value="${(splitState.offsets[i] || {}).y_mm || 0}" step="0.5" data-tile="${i}" data-axis="y" />
+        </div>
+      </div>`;
+    container.appendChild(tileDiv);
+  }
+
+  container.querySelectorAll('input[type="number"]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const i = parseInt(inp.dataset.tile);
+      if (!splitState.offsets[i]) splitState.offsets[i] = {x_mm: 0, y_mm: 0};
+      const v = parseFloat(inp.value) || 0;
+      if (inp.dataset.axis === 'x') splitState.offsets[i].x_mm = v;
+      else splitState.offsets[i].y_mm = v;
+    });
+  });
+}
+
+function wireSplitControls() {
+  document.getElementById('split-cols').addEventListener('change', () => {
+    splitState.cols = Math.max(1, parseInt(document.getElementById('split-cols').value) || 2);
+    splitState.colPositions = Array.from({length: splitState.cols - 1}, (_, i) => (i + 1) / splitState.cols);
+    splitState.offsets = Array.from({length: splitState.cols * splitState.rows}, () => ({x_mm: 0, y_mm: 0}));
+    renderSplitDividers();
+    renderSplitOffsets();
+  });
+
+  document.getElementById('split-rows').addEventListener('change', () => {
+    splitState.rows = Math.max(1, parseInt(document.getElementById('split-rows').value) || 1);
+    splitState.rowPositions = Array.from({length: splitState.rows - 1}, (_, i) => (i + 1) / splitState.rows);
+    splitState.offsets = Array.from({length: splitState.cols * splitState.rows}, () => ({x_mm: 0, y_mm: 0}));
+    renderSplitDividers();
+    renderSplitOffsets();
+  });
+
+  document.getElementById('split-overlap').addEventListener('input', () => {
+    splitState.overlapMm = parseFloat(document.getElementById('split-overlap').value);
+    document.getElementById('split-overlap-val').textContent = splitState.overlapMm + ' mm';
+  });
+
+  document.getElementById('split-tile-format').addEventListener('change', () => {
+    splitState.tileFormat = document.getElementById('split-tile-format').value;
+  });
+
+  document.getElementById('modal-split').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeSplitModal();
+  });
+}
+
+async function submitSplit() {
+  const btn = document.getElementById('btn-submit-split');
+  btn.disabled = true;
+  btn.textContent = 'Zatitzen...';
+
+  await safeCall(async () => {
+    const result = await API.splitPrint(splitState.printId, {
+      cols: splitState.cols,
+      rows: splitState.rows,
+      tile_format: splitState.tileFormat,
+      overlap_mm: splitState.overlapMm,
+      col_positions: splitState.colPositions.length ? splitState.colPositions : null,
+      row_positions: splitState.rowPositions.length ? splitState.rowPositions : null,
+      offsets: splitState.offsets,
+    });
+    closeSplitModal();
+    await loadJob(state.selectedJobId);
+    await loadJobs();
+    showToast(`${result.tile_print_ids.length} tile sortuta ✓`);
+  });
+
+  btn.disabled = false;
+  btn.textContent = 'Zatitu';
+}
+
 /* ── Wire up static buttons ─────────────────────────────────────────────── */
 function wireButtons() {
   document.getElementById('btn-new-job').addEventListener('click', openNewJobModal);
@@ -571,6 +802,7 @@ function wireButtons() {
   document.getElementById('new-job-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') submitNewJob();
   });
+  wireSplitControls();
 }
 
 /* ── SSE ────────────────────────────────────────────────────────────────── */
@@ -632,6 +864,8 @@ window.closeNewJobModal = closeNewJobModal;
 window.submitNewJob     = submitNewJob;
 window.closeFormatModal = closeFormatModal;
 window.submitFormat     = submitFormat;
+window.closeSplitModal  = closeSplitModal;
+window.submitSplit      = submitSplit;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {

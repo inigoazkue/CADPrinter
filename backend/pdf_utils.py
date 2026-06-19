@@ -85,6 +85,71 @@ def generate_sheet_preview(
         return False
 
 
+def split_pdf_tiles(
+    pdf_path: str,
+    output_dir: str,
+    cols: int = 2,
+    rows: int = 1,
+    tile_format: str = "A3",
+    overlap_mm: float = 5.0,
+    col_positions: list = None,
+    row_positions: list = None,
+    offsets: list = None,
+) -> list:
+    """
+    Split the first page of a PDF into cols×rows tiles of tile_format size.
+    col_positions: normalized (0..1) vertical divider positions (len = cols-1).
+    row_positions: normalized (0..1) horizontal divider positions (len = rows-1).
+    offsets: per-tile dicts {"x_mm": float, "y_mm": float} to pan clip window.
+    Returns list of output file paths in row-major order (left→right, top→bottom).
+    """
+    src_doc = fitz.open(pdf_path)
+    src_page = src_doc[0]
+    src_w = src_page.rect.width
+    src_h = src_page.rect.height
+
+    tw, th = PAGE_SIZES_PT.get(tile_format, PAGE_SIZES_PT["A3"])
+    overlap_pt = overlap_mm * PT_PER_MM
+
+    if col_positions is None:
+        col_positions = [(i + 1) / cols for i in range(cols - 1)]
+    if row_positions is None:
+        row_positions = [(i + 1) / rows for i in range(rows - 1)]
+
+    col_edges = [0.0] + [p * src_w for p in col_positions] + [src_w]
+    row_edges = [0.0] + [p * src_h for p in row_positions] + [src_h]
+
+    tile_paths = []
+    for r in range(rows):
+        for c in range(cols):
+            x0 = col_edges[c] - (overlap_pt / 2 if c > 0 else 0)
+            x1 = col_edges[c + 1] + (overlap_pt / 2 if c < cols - 1 else 0)
+            y0 = row_edges[r] - (overlap_pt / 2 if r > 0 else 0)
+            y1 = row_edges[r + 1] + (overlap_pt / 2 if r < rows - 1 else 0)
+
+            tile_idx = r * cols + c
+            if offsets and tile_idx < len(offsets):
+                off = offsets[tile_idx]
+                dx = (off.get("x_mm") or 0) * PT_PER_MM
+                dy = (off.get("y_mm") or 0) * PT_PER_MM
+                x0 += dx; x1 += dx
+                y0 += dy; y1 += dy
+
+            out = fitz.open()
+            page = out.new_page(width=tw, height=th)
+            page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
+            page.show_pdf_page(page.rect, src_doc, 0, clip=fitz.Rect(x0, y0, x1, y1))
+
+            tile_name = f"tile_{r}_{c}_{os.urandom(4).hex()}.pdf"
+            tile_path = str(Path(output_dir) / tile_name)
+            out.save(tile_path)
+            out.close()
+            tile_paths.append(tile_path)
+
+    src_doc.close()
+    return tile_paths
+
+
 def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str) -> bool:
     """
     Build final multi-page PDF.
