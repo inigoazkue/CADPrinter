@@ -41,10 +41,6 @@ const API = {
   updatePrint:     (id, data)   => API.request('PATCH', `/prints/${id}`, data),
   printPreviewUrl: (id)         => `/api/prints/${id}/preview`,
 
-  getCupsPrinters:    ()  => API.request('GET', '/cups-printers'),
-  addCupsPrinter:     (u) => API.request('POST', '/cups-printers', { username: u }),
-  deleteCupsPrinter:  (u) => API.request('DELETE', `/cups-printers/${encodeURIComponent(u)}`),
-
   async uploadPrint(sheetId, file) {
     const form = new FormData();
     form.append('file', file);
@@ -487,70 +483,10 @@ async function submitFormat() {
   });
 }
 
-/* ── Modal: Inprimagailu erabiltzaileak ─────────────────────────────────── */
-async function openUsersModal() {
-  document.getElementById('new-cups-username').value = '';
-  document.getElementById('modal-users').classList.remove('hidden');
-  await loadCupsPrinters();
-}
-
-function closeUsersModal() {
-  document.getElementById('modal-users').classList.add('hidden');
-}
-
-async function loadCupsPrinters() {
-  const container = document.getElementById('cups-users-list');
-  try {
-    const resp = await API.getCupsPrinters();
-    const users = resp.users || [];
-    if (!users.length) {
-      container.innerHTML = '<p class="cups-users-empty">Inprimagailurik ez. Gehitu bat behean.</p>';
-      return;
-    }
-    container.innerHTML = '';
-    const serverHost = location.hostname + ':631';
-    for (const u of users) {
-      const row = el('div', 'cups-user-row');
-      const info = el('div', 'cups-user-info');
-      info.innerHTML = `<span class="cups-user-name">${escHtml(u)}</span>
-        <span class="cups-user-url">http://${escHtml(serverHost)}/printers/CADPrinter-${escHtml(u)}</span>`;
-      const del = el('button', 'cups-user-del', iconTrash(13));
-      del.title = 'Inprimagailua ezabatu';
-      del.addEventListener('click', async () => {
-        if (!confirm(`"${u}" inprimagailua eta bere lan-esleipena ezabatu?`)) return;
-        await safeCall(async () => {
-          await API.deleteCupsPrinter(u);
-          await loadCupsPrinters();
-          await loadJobs();
-          showToast(`"${u}" ezabatuta`);
-        });
-      });
-      row.appendChild(info);
-      row.appendChild(del);
-      container.appendChild(row);
-    }
-  } catch (e) {
-    container.innerHTML = `<p class="cups-users-empty" style="color:var(--danger)">${escHtml(e.message)}</p>`;
-  }
-}
-
-async function submitAddCupsUser() {
-  const username = document.getElementById('new-cups-username').value.trim();
-  if (!username) { document.getElementById('new-cups-username').focus(); return; }
-  showToast('Inprimagailua sortzen...');
-  await safeCall(async () => {
-    await API.addCupsPrinter(username);
-    document.getElementById('new-cups-username').value = '';
-    await loadCupsPrinters();
-    showToast(`"${username}" inprimagailua sortuta`);
-  });
-}
-
 
 /* ── Wire up static buttons ─────────────────────────────────────────────── */
 function wireButtons() {
   document.getElementById('btn-new-job').addEventListener('click', openNewJobModal);
-  document.getElementById('btn-users').addEventListener('click', openUsersModal);
 
   document.getElementById('btn-add-sheet').addEventListener('click', async () => {
     await safeCall(async () => {
@@ -615,10 +551,6 @@ function wireButtons() {
   document.getElementById('modal-format').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeFormatModal();
   });
-  document.getElementById('modal-users').addEventListener('click', e => {
-    if (e.target === e.currentTarget) closeUsersModal();
-  });
-
   document.getElementById('new-job-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') submitNewJob();
   });
@@ -683,8 +615,6 @@ window.closeNewJobModal = closeNewJobModal;
 window.submitNewJob     = submitNewJob;
 window.closeFormatModal = closeFormatModal;
 window.submitFormat     = submitFormat;
-window.closeUsersModal   = closeUsersModal;
-window.submitAddCupsUser = submitAddCupsUser;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {

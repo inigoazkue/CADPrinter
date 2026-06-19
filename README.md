@@ -1,26 +1,33 @@
 # CAD Printer
 
-Servidor de impresión virtual para AutoCAD. Recibe PDFs desde una impresora virtual CUPS en Ubuntu, los agrupa en trabajos con múltiples hojas y capas, genera vistas previas combinadas y exporta el resultado final como PDF listo para imprimir.
+Servidor de impresión virtual para AutoCAD. Recibe PDFs desde una impresora virtual CUPS en Ubuntu, los identifica por usuario de dominio Windows, los agrupa en trabajos con múltiples hojas y capas, genera vistas previas combinadas y exporta el resultado final como PDF listo para imprimir.
 
 ---
 
 ## Arquitectura
 
 ```
-Windows (AutoCAD)
-    │  imprime a "CADPrinter" via IPP
+Windows (AutoCAD) — usuario EITB\azkue_inigo
+    │  imprime a "CADPrinter" via IPP (puerto 631)
     ▼
 Ubuntu Server — CUPS + cups-pdf
     │  genera PDF en /var/spool/cups-pdf/ANONYMOUS/
+    │  ejecuta PostProcessing: cad-pdf-route.sh
+    │    lee usuario de dominio del log de cups-pdf
+    │    mueve PDF a /var/spool/cups-pdf/azkue_inigo/
     ▼
-watcher.py (systemd)
-    │  detecta el fichero, lo copia a data/prints/, llama API
+watcher.py (systemd) — vigila /var/spool/cups-pdf/ recursivamente
+    │  on_created: ficheros que quedan en ANONYMOUS → trabajo global
+    │  on_moved:   ficheros movidos a carpeta de usuario → trabajo del usuario
+    │  copia PDF a data/prints/, llama API, borra spool
     ▼
-FastAPI (backend/main.py, systemd)  →  puerto 8080
+FastAPI (backend/main.py, systemd) — puerto 8080
+    │  enruta por source_user: cada usuario tiene su trabajo activo
     │  gestiona jobs/sheets/prints en SQLite
     │  genera previews PNG con PyMuPDF
     ▼
 Navegador web (frontend vanilla JS)
+    │  sidebar agrupado por usuario de dominio
     ←→ SSE (Server-Sent Events) para actualizaciones en tiempo real
 ```
 
@@ -29,28 +36,49 @@ Navegador web (frontend vanilla JS)
 | Componente | Tecnología | Función |
 |---|---|---|
 | Backend API | FastAPI + uvicorn | REST API + SSE + ficheros estáticos |
-| Base de datos | SQLite (sqlite3) | Jobs, hojas, capas |
+| Base de datos | SQLite (sqlite3) | Jobs, hojas, capas, usuario activo por usuario |
 | PDF | PyMuPDF (pymupdf) | Previews PNG, overlay, exportación |
 | Impresora virtual | CUPS + cups-pdf | Recibe impresiones desde Windows vía IPP |
-| Monitor spool | watchdog | Detecta PDFs nuevos en el spool de CUPS |
+| PostProcessing | cad-pdf-route.sh | Enruta PDFs a carpeta por usuario de dominio |
+| Monitor spool | watchdog | Detecta PDFs nuevos, los procesa por usuario |
 | Frontend | Vanilla JS + HTML/CSS | Sin frameworks, drag & drop nativo |
 
 ### Modelo de datos
 
 ```
 jobs
-  ├── id, name, format (A3/A4), is_current, created_at
+  ├── id, name, format (A3/A4), is_current, source_user, created_at
   └── sheets (1..N)
         ├── id, job_id, name, order_num
         └── prints (0..N)
-              ├── id, sheet_id, job_id
+              ├── id, sheet_id, job_id, source_user
               ├── filename, original_name, preview_path
               ├── format (A3/A4 detectado)
               ├── enabled (1/0)
               └── received_at
+
+user_active_jobs
+  └── source_user (PK), job_id (FK → jobs)
 ```
 
-El campo `is_current` en `jobs` indica el trabajo activo — las impresiones entrantes del spool van automáticamente a su primera hoja.
+El campo `source_user` contiene el nombre de usuario limpio extraído del dominio Windows (`EITB\azkue_inigo` → `azkue_inigo`). Cada usuario tiene su propio trabajo activo independiente en `user_active_jobs`.
+
+---
+
+## Funcionalidad multi-usuario (v2.0.0)
+
+Varios usuarios de Windows pueden imprimir simultáneamente a la misma impresora `CADPrinter`. Las impresiones se enrutan automáticamente al trabajo activo de cada usuario, sin contraseñas ni configuración adicional por usuario.
+
+### Cómo funciona la detección de usuario
+
+1. Windows envía la impresión a `CADPrinter` con el nombre de usuario de dominio (`EITB\azkue_inigo`) como atributo IPP.
+2. cups-pdf no puede resolver el usuario de dominio contra `/etc/passwd`, lo registra en su log y crea el PDF en `ANONYMOUS/`.
+3. El script PostProcessing (`cad-pdf-route.sh`) lee el log de cups-pdf donde el nombre de usuario con backslash está preservado (`eitb\azkue_inigo`), extrae la parte después del `\` (`azkue_inigo`) y mueve el PDF a `/var/spool/cups-pdf/azkue_inigo/`.
+4. El watcher detecta el movimiento vía `on_moved` y notifica al backend con `source_user = "azkue_inigo"`.
+5. El backend busca el trabajo activo de ese usuario en `user_active_jobs`. Si no existe, crea uno automáticamente.
+6. El sidebar de la web muestra los trabajos agrupados por nombre de usuario.
+
+> **Nota técnica**: el argumento `$3` que cups-pdf pasa al script PostProcessing sufre parsing de shell que elimina el backslash (`eitb\azkue_inigo` → `eitbazkue_inigo`). Por eso el script lee el nombre de usuario directamente del fichero de log de cups-pdf, donde el backslash está preservado.
 
 ---
 
@@ -62,6 +90,7 @@ El campo `is_current` en `jobs` indica el trabajo activo — las impresiones ent
 - cups-pdf o printer-driver-cups-pdf
 - ghostscript
 - python3-pymupdf (vía apt)
+- apparmor-utils (`sudo apt install apparmor-utils`)
 - Red local (los clientes Windows acceden por IPP a puerto 631)
 
 ---
@@ -98,21 +127,88 @@ El instalador realiza automáticamente:
 - Creación de directorios de datos (`data/prints/`, `data/previews/`)
 - Registro e inicio de servicios systemd (`cad-printer`, `cad-watcher`)
 
-### 3. Añadir la impresora en Windows
+### 3. Configuración post-instalación (multi-usuario)
 
-Ver [MANUAL.md](MANUAL.md) — sección "Configurar impresora en Windows".
+Estos pasos deben realizarse manualmente una sola vez tras la instalación:
+
+#### 3a. Permisos del spool de CUPS
+
+cups-pdf crea el PDF como usuario `nobody`. Para que pueda crear subdirectorios por usuario:
+
+```bash
+sudo chmod 1777 /var/spool/cups-pdf/
+```
+
+#### 3b. Script de enrutamiento PostProcessing
+
+```bash
+sudo cp setup/cups-pdf-route.sh /usr/local/bin/cad-pdf-route.sh
+sudo chmod +x /usr/local/bin/cad-pdf-route.sh
+```
+
+Añadir al final de `/etc/cups/cups-pdf.conf`:
+
+```
+PostProcessing /usr/local/bin/cad-pdf-route.sh
+```
+
+#### 3c. Permisos del log de cups-pdf
+
+El script PostProcessing necesita leer el log de cups-pdf (que corre como `nobody`) para extraer el nombre de usuario de dominio:
+
+```bash
+sudo chmod o+r /var/log/cups/cups-pdf-CADPrinter_log
+```
+
+Para que sea persistente tras rotación de logs:
+
+```bash
+sudo tee /etc/logrotate.d/cups-pdf-cad << 'EOF'
+/var/log/cups/cups-pdf*_log {
+    rotate 4
+    monthly
+    compress
+    missingok
+    notifempty
+    create 644 root adm
+}
+EOF
+```
+
+#### 3d. AppArmor — permitir ejecución del script PostProcessing
+
+El perfil AppArmor de cups-pdf bloquea por defecto la ejecución de scripts externos. Poner cups-pdf en modo permisivo (solo registra, no bloquea):
+
+```bash
+sudo apt install apparmor-utils -y
+sudo aa-complain /usr/lib/cups/backend/cups-pdf
+```
+
+#### 3e. Reiniciar servicios
+
+```bash
+sudo systemctl restart cups cad-printer cad-watcher
+```
+
+### 4. Añadir la impresora en Windows
+
+Todos los usuarios comparten la misma impresora. En cada PC Windows:
+
+1. Panel de control → Dispositivos e impresoras → Agregar impresora
+2. "La impresora que quiero no está en la lista"
+3. "Seleccionar una impresora compartida por nombre"
+4. URL: `http://<IP-del-servidor>:631/printers/CADPrinter`
+5. Instalar driver genérico si se solicita
+
+Las impresiones de cada usuario se enrutan automáticamente a su trabajo activo en la aplicación web.
 
 ---
 
 ## Acceso a la aplicación
 
-Una vez instalado, la interfaz web es accesible en:
-
 ```
 http://<IP-del-servidor>:8080
 ```
-
-Ejemplo: `http://192.168.1.50:8080`
 
 ---
 
@@ -123,19 +219,18 @@ CADPrinter/
 ├── backend/
 │   ├── __init__.py
 │   ├── main.py          # FastAPI app: rutas REST, SSE, ficheros estáticos
-│   ├── database.py      # SQLite: schema, init, helpers
+│   ├── database.py      # SQLite: schema, init, helpers, user_active_jobs
 │   ├── pdf_utils.py     # PyMuPDF: previews, overlay, exportación, detección formato
-│   └── watcher.py       # watchdog: monitoriza spool CUPS, notifica API
+│   └── watcher.py       # watchdog: monitoriza spool CUPS, enruta por usuario
 ├── frontend/
 │   ├── index.html
 │   ├── css/style.css
 │   ├── js/app.js
 │   └── img/
-│       ├── Eitb_corp.svg.png
-│       └── impresora.png
 ├── setup/
 │   ├── install.sh
 │   ├── cups-setup.sh
+│   ├── cups-pdf-route.sh   # PostProcessing: enruta PDFs por usuario de dominio
 │   ├── cad-printer.service
 │   └── cad-watcher.service
 ├── data/                # generado en tiempo de ejecución (no en git)
@@ -143,6 +238,7 @@ CADPrinter/
 │   ├── previews/        # miniaturas PNG
 │   └── cad_printer.db   # base de datos SQLite
 ├── requirements.txt
+├── CHANGELOG.md
 └── README.md
 ```
 
@@ -185,12 +281,13 @@ No es necesario reinstalar dependencias salvo que cambie `requirements.txt`.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| GET | `/api/jobs` | Listar trabajos |
+| GET | `/api/jobs` | Listar trabajos + mapa user→job activo |
 | POST | `/api/jobs` | Crear trabajo |
 | GET | `/api/jobs/{id}` | Trabajo completo (con hojas y capas) |
 | PATCH | `/api/jobs/{id}` | Renombrar, cambiar formato |
 | DELETE | `/api/jobs/{id}` | Borrar trabajo y sus PDFs |
-| POST | `/api/jobs/{id}/activate` | Marcar como trabajo activo |
+| POST | `/api/jobs/{id}/activate` | Marcar como trabajo activo global |
+| POST | `/api/users/{user}/jobs/{id}/activate` | Marcar como trabajo activo de un usuario |
 | GET | `/api/jobs/{id}/export` | Exportar trabajo como PDF multipágina |
 | POST | `/api/jobs/{id}/sheets` | Añadir hoja |
 | PATCH | `/api/sheets/{id}` | Renombrar hoja |

@@ -16,10 +16,9 @@
         <img src="/img/Eitb_corp.svg.png" class="eitb-logo" alt="EITB" />
         <div class="brand-text">
           <span class="logo">CAD Printer</span>
-          <span class="version-tag">v1.0.0</span>
+          <span class="version-tag">v2.0.0</span>
         </div>
       </div>
-      <button class="btn-icon" id="btn-users" title="Inprimagailu erabiltzaileak">⚙</button>
       <button class="btn-icon" id="btn-new-job" title="Lan berria">+</button>
     </div>
     <div class="sidebar-list" id="job-list">
@@ -112,29 +111,7 @@
     </div>
   </div>
 
-  <!-- ── Modal: Inprimagailu erabiltzaileak ────────────────────── -->
-  <div id="modal-users" class="modal-overlay hidden">
-    <div class="modal">
-      <div class="modal-header">
-        <h2>Inprimagailu erabiltzaileak</h2>
-        <button class="btn-close" onclick="closeUsersModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <p class="modal-hint">Erabiltzaile bakoitzak bere inprimagailu propioa du CUPS-en. Windows-en gehitzean, inprimaketa automatikoki bere lanera joango da.</p>
-        <div id="cups-users-list" class="cups-users-list"></div>
-        <div class="modal-divider"></div>
-        <label>Erabiltzaile berria
-          <input type="text" id="new-cups-username" placeholder="izen.abizena" autocomplete="off" />
-        </label>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeUsersModal()">Itxi</button>
-        <button class="btn btn-primary" onclick="submitAddCupsUser()">Inprimagailua sortu</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ── Toast ─────────────────────────────────────────────────── -->
+<!-- ── Toast ─────────────────────────────────────────────────── -->
   <div id="toast" class="toast hidden"></div>
 
   <script src="/js/app.js"></script>

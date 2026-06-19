@@ -1,5 +1,59 @@
 # Changelog
 
+## v2.0.0 — 2026-06-19
+
+Soporte multi-usuario: varios usuarios Windows pueden imprimir simultáneamente a la misma impresora y sus trabajos se enrutan automáticamente de forma independiente.
+
+### Nuevas funcionalidades
+
+**Enrutamiento por usuario de dominio Windows**
+- Las impresiones se identifican automáticamente por el usuario de dominio Windows (`EITB\azkue_inigo` → `azkue_inigo`)
+- Cada usuario tiene su propio trabajo activo, independiente del de otros usuarios
+- No se requieren contraseñas ni configuración por usuario: basta con usar la misma impresora `CADPrinter`
+- Si un usuario imprime y no tiene trabajo activo, se crea uno automáticamente
+
+**Sidebar agrupado por usuario**
+- Los trabajos se agrupan en el sidebar por nombre de usuario de dominio
+- Cabeceras de grupo con indicador visual (`◎ azkue_inigo`)
+- Los trabajos sin usuario (subidos manualmente) se agrupan en "Beste lanak"
+
+**Tabla `user_active_jobs`**
+- Nueva tabla SQLite que mapea cada usuario a su trabajo activo
+- Endpoint `POST /api/users/{user}/jobs/{id}/activate` para cambiar el trabajo activo de un usuario concreto
+- `GET /api/jobs` devuelve `{ jobs, userActiveJobs }` con el mapa usuario→job activo
+
+**Campo `source_user` en jobs y prints**
+- Todos los trabajos y capas registran el usuario de origen
+- Permite filtrado y agrupación en la interfaz
+
+### Infraestructura
+
+**Script PostProcessing (`setup/cups-pdf-route.sh`)**
+- cups-pdf llama al script tras generar cada PDF
+- Lee el nombre de usuario de dominio del log de cups-pdf (donde el backslash está preservado)
+- Extrae el username limpio: `eitb\azkue_inigo` → `azkue_inigo`
+- Mueve el PDF de `ANONYMOUS/` a `/var/spool/cups-pdf/azkue_inigo/` con permisos 755
+- PDFs sin usuario identificable permanecen en `ANONYMOUS/` y van al trabajo global
+
+**Watcher multi-usuario**
+- Vigila `/var/spool/cups-pdf/` recursivamente (antes solo `ANONYMOUS/`)
+- Nuevo handler `on_moved`: detecta PDFs movidos por el PostProcessing a carpetas de usuario
+- `on_created` para `ANONYMOUS/`: espera 2 segundos antes de procesar, por si el PostProcessing los mueve
+
+**Configuración del servidor requerida (post-instalación)**
+- `sudo chmod 1777 /var/spool/cups-pdf/` — permite a `nobody` crear subcarpetas de usuario
+- `PostProcessing /usr/local/bin/cad-pdf-route.sh` en `cups-pdf.conf`
+- `sudo chmod o+r /var/log/cups/cups-pdf-CADPrinter_log` — permite al script leer el log
+- `sudo aa-complain /usr/lib/cups/backend/cups-pdf` — AppArmor en modo permisivo para cups-pdf
+
+### Cambios de interfaz
+
+- Eliminado el modal de gestión de colas CUPS por usuario (ya no es necesario: todos usan la misma impresora `CADPrinter`)
+- Eliminado el botón ⚙ del sidebar
+- Versión actualizada a v2.0.0
+
+---
+
 ## v1.0.0 — 2026-06-18
 
 Primera versión en producción.
@@ -36,7 +90,6 @@ Primera versión en producción.
 - Backend FastAPI + SQLite, sin ORM
 - Actualizaciones en tiempo real via Server-Sent Events (SSE)
 - Servicios systemd para backend y watcher
-- Reverse proxy nginx con soporte SSE
 - Instalador automático `setup/install.sh` con detección de proxy corporativo
 - PyMuPDF instalado vía apt para compatibilidad con proxy SSL corporativo
 
