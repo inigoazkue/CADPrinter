@@ -1,3 +1,9 @@
+/* ── Paper sizes in mm (portrait) ──────────────────────────────────────── */
+const PAGE_SIZES_MM = {
+  A0: [841, 1189], A1: [594, 841], A2: [420, 594],
+  A3: [297, 420], A4: [210, 297], A5: [148, 210], A6: [105, 148],
+};
+
 /* ── State ─────────────────────────────────────────────────────────────── */
 const state = {
   jobs: [],
@@ -44,6 +50,7 @@ const API = {
   deletePrint:     (id)         => API.request('DELETE', `/prints/${id}`),
   updatePrint:     (id, data)   => API.request('PATCH', `/prints/${id}`, data),
   splitPrint:      (id, params) => API.request('POST', `/prints/${id}/split`, params),
+  editPrint:       (id, params) => API.request('POST', `/prints/${id}/edit`, params),
   printPreviewUrl: (id)         => `/api/prints/${id}/preview`,
 
   async uploadPrint(sheetId, file) {
@@ -377,6 +384,12 @@ function renderPrint(p, sheetId, jobFmt) {
   img.src = API.printPreviewUrl(p.id);
   img.alt = p.original_name || p.filename;
   img.onerror = () => { img.style.background = '#f1f5f9'; img.alt = ''; };
+  img.style.cursor = 'pointer';
+  img.title = 'Editatu (biratu / zatitu / kokatu)';
+  img.addEventListener('click', e => {
+    e.stopPropagation();
+    openEditModal(p, jobFmt);
+  });
 
   const footer = el('div', 'print-thumb-footer', escHtml((p.original_name || p.filename).replace(/\.\w+$/, '')));
   footer.title = p.original_name || p.filename;
@@ -399,18 +412,6 @@ function renderPrint(p, sheetId, jobFmt) {
 
   controls.appendChild(toggleBtn);
   controls.appendChild(delBtn);
-
-  const isTile = p.tile_col !== null && p.tile_col !== undefined;
-
-  if (!isTile && p.format && ['A0', 'A1', 'A2'].includes(p.format)) {
-    const splitBtn = el('button', 'ctrl-btn split-btn', iconSplit());
-    splitBtn.title = 'Zatitu tilesetan';
-    splitBtn.addEventListener('click', e => {
-      e.stopPropagation();
-      openSplitModal(p.id, p.format);
-    });
-    controls.appendChild(splitBtn);
-  }
 
   thumb.appendChild(img);
   thumb.appendChild(footer);
@@ -551,6 +552,7 @@ async function submitFormat() {
 /* ── Split modal ─────────────────────────────────────────────────────────── */
 const splitState = {
   printId: null,
+  jobFmt: 'A3',
   cols: 2,
   rows: 1,
   colPositions: [0.5],
@@ -558,6 +560,10 @@ const splitState = {
   overlapMm: 5,
   tileFormat: 'A3',
   rotation: 0,
+  offsetX: 0,   // position offset in mm (position mode)
+  offsetY: 0,
+  tx: 0,        // current translate in px (position mode)
+  ty: 0,
 };
 
 function autoTiles(fmt) {
@@ -567,16 +573,29 @@ function autoTiles(fmt) {
   return { cols: 2, rows: 1 };
 }
 
-function openSplitModal(printId, fmt) {
-  splitState.printId = printId;
-  const { cols, rows } = autoTiles(fmt);
+function isSplitMode() {
+  return splitState.cols > 1 || splitState.rows > 1;
+}
+
+function openEditModal(p, jobFmt) {
+  splitState.printId = p.id;
+  splitState.jobFmt = jobFmt || p.format || 'A3';
+  splitState.rotation = 0;
+  splitState.overlapMm = 5;
+  splitState.tileFormat = 'A3';
+  splitState.offsetX = p.offset_x_mm || 0;
+  splitState.offsetY = p.offset_y_mm || 0;
+  splitState.tx = 0;
+  splitState.ty = 0;
+
+  // Large formats default to split intent; others to position intent.
+  const big = ['A0', 'A1', 'A2'].includes(p.format);
+  const { cols, rows } = big ? autoTiles(p.format) : { cols: 1, rows: 1 };
   splitState.cols = cols;
   splitState.rows = rows;
   splitState.colPositions = Array.from({length: cols - 1}, (_, i) => (i + 1) / cols);
   splitState.rowPositions = Array.from({length: rows - 1}, (_, i) => (i + 1) / rows);
-  splitState.overlapMm = 5;
-  splitState.tileFormat = 'A3';
-  splitState.rotation = 0;
+
   document.getElementById('split-cols').value = cols;
   document.getElementById('split-rows').value = rows;
   document.getElementById('split-overlap').value = 5;
@@ -584,18 +603,92 @@ function openSplitModal(printId, fmt) {
   document.getElementById('split-tile-format').value = 'A3';
   document.getElementById('btn-split-rotate').textContent = '↻ 0°';
   document.getElementById('btn-submit-split').disabled = false;
-  document.getElementById('btn-submit-split').textContent = 'Zatitu';
 
   const img = document.getElementById('split-preview-img');
+  img.style.transform = '';
   img.src = '';
-  img.onload = () => renderSplitDividers();
-  img.src = API.printPreviewUrl(printId);
+  img.onload = () => refreshModalMode();
+  img.src = API.printPreviewUrl(p.id) + '?_=' + Date.now();
 
   document.getElementById('modal-split').classList.remove('hidden');
+  syncModalControls();
+}
+
+// Backwards-compatible alias (kept in case of external callers)
+function openSplitModal(printId, fmt) {
+  openEditModal({ id: printId, format: fmt }, fmt);
 }
 
 function closeSplitModal() {
   document.getElementById('modal-split').classList.add('hidden');
+}
+
+function syncModalControls() {
+  const split = isSplitMode();
+  const submitBtn = document.getElementById('btn-submit-split');
+  submitBtn.textContent = split ? 'Zatitu' : 'Gorde';
+  const hint = document.querySelector('#modal-split .split-hint');
+  if (hint) {
+    hint.textContent = split
+      ? 'Arrastatu lerro beltzak zatiketa-puntua aldatzeko'
+      : 'Arrastatu irudia kokapena doitzeko';
+  }
+  const h2 = document.querySelector('#modal-split h2');
+  if (h2) h2.textContent = split ? 'PDF zatitu tilesetan' : 'Geruza editatu';
+}
+
+function refreshModalMode() {
+  const wrap = document.getElementById('split-preview-wrap');
+  const img = document.getElementById('split-preview-img');
+  wrap.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
+
+  if (isSplitMode()) {
+    // Tile mode: no position offset, show draggable cut lines + overlays.
+    img.style.transform = '';
+    img.style.cursor = 'default';
+    renderSplitDividers();
+  } else {
+    // Position mode: drag image to set offset.
+    img.style.cursor = 'move';
+    applyPositionTransform();
+  }
+  syncModalControls();
+}
+
+function applyPositionTransform() {
+  const wrap = document.getElementById('split-preview-wrap');
+  const img = document.getElementById('split-preview-img');
+  const W = wrap.clientWidth;
+  const H = img.clientHeight || wrap.clientHeight;
+  const mm = PAGE_SIZES_MM[splitState.jobFmt] || PAGE_SIZES_MM.A3;
+  splitState.tx = (splitState.offsetX / mm[0]) * W;
+  splitState.ty = (splitState.offsetY / mm[1]) * H;
+  img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
+  setupPositionDrag(wrap, img);
+}
+
+function setupPositionDrag(wrap, img) {
+  if (img._posDragWired) return;
+  img._posDragWired = true;
+  img.addEventListener('pointerdown', e => {
+    if (isSplitMode()) return;
+    e.preventDefault();
+    img.setPointerCapture(e.pointerId);
+    const W = wrap.clientWidth;
+    const H = img.clientHeight || wrap.clientHeight;
+    const mm = PAGE_SIZES_MM[splitState.jobFmt] || PAGE_SIZES_MM.A3;
+    const startX = e.clientX, startY = e.clientY;
+    const baseTx = splitState.tx, baseTy = splitState.ty;
+    function onMove(me) {
+      splitState.tx = baseTx + (me.clientX - startX);
+      splitState.ty = baseTy + (me.clientY - startY);
+      img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
+      splitState.offsetX = (splitState.tx / W) * mm[0];
+      splitState.offsetY = (splitState.ty / H) * mm[1];
+    }
+    img.addEventListener('pointermove', onMove);
+    img.addEventListener('pointerup', () => img.removeEventListener('pointermove', onMove), { once: true });
+  });
 }
 
 function renderSplitDividers() {
@@ -686,15 +779,15 @@ function makeDraggable(divider, axis, idx, wrap) {
 
 function wireSplitControls() {
   document.getElementById('split-cols').addEventListener('change', () => {
-    splitState.cols = Math.max(1, parseInt(document.getElementById('split-cols').value) || 2);
+    splitState.cols = Math.max(1, parseInt(document.getElementById('split-cols').value) || 1);
     splitState.colPositions = Array.from({length: splitState.cols - 1}, (_, i) => (i + 1) / splitState.cols);
-    renderSplitDividers();
+    refreshModalMode();
   });
 
   document.getElementById('split-rows').addEventListener('change', () => {
     splitState.rows = Math.max(1, parseInt(document.getElementById('split-rows').value) || 1);
     splitState.rowPositions = Array.from({length: splitState.rows - 1}, (_, i) => (i + 1) / splitState.rows);
-    renderSplitDividers();
+    refreshModalMode();
   });
 
   document.getElementById('split-overlap').addEventListener('input', () => {
@@ -712,9 +805,10 @@ function wireSplitControls() {
     document.getElementById('btn-split-rotate').textContent = labels[splitState.rotation / 90];
     // Reload preview from server with rotation applied
     const img = document.getElementById('split-preview-img');
+    img.style.transform = '';
     img.src = '';
-    img.onload = () => renderSplitDividers();
-    const rotParam = splitState.rotation ? `?rotation=${splitState.rotation}` : '';
+    img.onload = () => refreshModalMode();
+    const rotParam = splitState.rotation ? `?rotation=${splitState.rotation}` : '?_=' + Date.now();
     img.src = `/api/prints/${splitState.printId}/preview${rotParam}`;
   });
 
@@ -726,26 +820,42 @@ function wireSplitControls() {
 async function submitSplit() {
   const btn = document.getElementById('btn-submit-split');
   btn.disabled = true;
-  btn.textContent = 'Zatitzen...';
 
-  await safeCall(async () => {
-    const result = await API.splitPrint(splitState.printId, {
-      cols: splitState.cols,
-      rows: splitState.rows,
-      tile_format: splitState.tileFormat,
-      overlap_mm: splitState.overlapMm,
-      col_positions: splitState.colPositions.length ? splitState.colPositions : null,
-      row_positions: splitState.rowPositions.length ? splitState.rowPositions : null,
-      rotation: splitState.rotation,
+  if (isSplitMode()) {
+    btn.textContent = 'Zatitzen...';
+    await safeCall(async () => {
+      const result = await API.splitPrint(splitState.printId, {
+        cols: splitState.cols,
+        rows: splitState.rows,
+        tile_format: splitState.tileFormat,
+        overlap_mm: splitState.overlapMm,
+        col_positions: splitState.colPositions.length ? splitState.colPositions : null,
+        row_positions: splitState.rowPositions.length ? splitState.rowPositions : null,
+        rotation: splitState.rotation,
+      });
+      closeSplitModal();
+      await loadJob(state.selectedJobId);
+      await loadJobs();
+      showToast(`${result.tile_print_ids.length} tile sortuta ✓`);
     });
-    closeSplitModal();
-    await loadJob(state.selectedJobId);
-    await loadJobs();
-    showToast(`${result.tile_print_ids.length} tile sortuta ✓`);
-  });
+    btn.textContent = 'Zatitu';
+  } else {
+    btn.textContent = 'Gordetzen...';
+    await safeCall(async () => {
+      await API.editPrint(splitState.printId, {
+        rotation: splitState.rotation,
+        offset_x_mm: splitState.offsetX,
+        offset_y_mm: splitState.offsetY,
+      });
+      closeSplitModal();
+      await loadJob(state.selectedJobId);
+      await loadJobs();
+      showToast('Geruza eguneratuta ✓');
+    });
+    btn.textContent = 'Gorde';
+  }
 
   btn.disabled = false;
-  btn.textContent = 'Zatitu';
 }
 
 /* ── Wire up static buttons ─────────────────────────────────────────────── */

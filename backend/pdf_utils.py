@@ -90,6 +90,37 @@ def generate_sheet_preview(
         return False
 
 
+def apply_rotation_to_pdf(pdf_path: str, rotation: int) -> bool:
+    """Rewrite a PDF in place with its first page rotated by rotation degrees.
+
+    Bakes the rotation into the file so subsequent renders/exports use it
+    directly (no per-render rotation needed). Writes to a temp file then
+    atomically replaces the original.
+    """
+    rot = rotation % 360
+    if rot == 0:
+        return True
+    try:
+        src = fitz.open(pdf_path)
+        src_page = src[0]
+        if rot in (90, 270):
+            rw, rh = src_page.rect.height, src_page.rect.width
+        else:
+            rw, rh = src_page.rect.width, src_page.rect.height
+        out = fitz.open()
+        page = out.new_page(width=rw, height=rh)
+        page.show_pdf_page(page.rect, src, 0, rotate=rot)
+        tmp_path = pdf_path + ".rot.tmp"
+        out.save(tmp_path)
+        src.close()
+        out.close()
+        os.replace(tmp_path, pdf_path)
+        return True
+    except Exception as e:
+        print(f"[apply_rotation] Error rotating {pdf_path}: {e}")
+        return False
+
+
 def generate_rotated_preview(pdf_path: str, rotation: int, width_px: int = 300):
     """Return PNG bytes of the first page rotated by rotation degrees (90/180/270)."""
     try:

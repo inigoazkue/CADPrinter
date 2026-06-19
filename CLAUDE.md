@@ -46,7 +46,8 @@ Aplicación web para EITB que recibe PDFs desde AutoCAD (vía impresora virtual 
 jobs (id, name, format A0–A6, is_current, source_user, created_at)
   └── sheets (id, job_id, name, order_num)
         └── prints (id, sheet_id, job_id, filename, original_name,
-                    preview_path, format, enabled, order_num, source_user, received_at)
+                    preview_path, format, enabled, order_num, source_user, received_at,
+                    offset_x_mm, offset_y_mm, tile_col, tile_row)
 
 user_active_jobs (source_user PK, job_id FK → jobs)
 ```
@@ -54,7 +55,15 @@ user_active_jobs (source_user PK, job_id FK → jobs)
 - `source_user`: nombre de usuario limpio extraído del dominio Windows (`EITB\azkue_inigo` → `azkue_inigo`). NULL para trabajos sin usuario.
 - `user_active_jobs`: tabla que mapea cada usuario a su trabajo activo. Independiente de `is_current`.
 - `GET /api/jobs` devuelve `{"jobs": [...], "userActiveJobs": {user: job_id}}`.
-- `POST /api/prints/{id}/split` divide un print grande en tiles A3. Parámetros: `cols`, `rows`, `tile_format`, `overlap_mm`, `col_positions` (norm. 0..1), `row_positions`, `offsets` (pan por tile en mm). El original se mueve a hoja "Iturriak" (disabled).
+- **Editor unificado de geruza (capa)**: al hacer clic en la miniatura de cualquier print se abre el modal `#modal-split`, que es un editor con DOS modos según `cols`/`rows`:
+  - **Modo posición** (`cols==1 && rows==1`, defecto para A3/A4…): se arrastra la imagen del preview para reposicionar la capa sobre la hoja. La conversión px→mm usa `PAGE_SIZES_MM[jobFmt]` (el ancho mostrado ↔ ancho de hoja en mm). Al guardar llama a `POST /api/prints/{id}/edit`.
+  - **Modo split** (`cols>1 || rows>1`, defecto para A0/A1/A2 vía `autoTiles()`): líneas de corte arrastrables; al guardar llama a `POST /api/prints/{id}/split`.
+  - El botón ↻ (rotar) cicla 0/90/180/270° en ambos modos; recarga el preview vía `GET /prints/{id}/preview?rotation=N`. El botón de submit cambia de etiqueta: "Gorde" (posición) / "Zatitu" (split).
+- `POST /api/prints/{id}/edit` (modelo `PrintEdit`: `rotation`, `offset_x_mm`, `offset_y_mm`): si `rotation≠0` hornea la rotación en el PDF con `pdf_utils.apply_rotation_to_pdf()` (reescribe el fichero rotado vía `show_pdf_page(rotate=)` a temp + `os.replace`), regenera el preview y re-detecta el formato. Guarda los offsets. Broadcast `job_updated`.
+- `POST /api/prints/{id}/split` divide un print grande en tiles. Parámetros: `cols`, `rows`, `tile_format`, `overlap_mm`, `col_positions` (norm. 0..1), `row_positions`, `rotation`. Los tiles se crean **todos en la hoja original** con `tile_col`/`tile_row`; el original se mueve a una hoja "Iturriak" (disabled). La aurrebista de la hoja con tiles se genera en rejilla con `pdf_utils.generate_grid_preview()` (los tiles van side-by-side, NO superpuestos).
+- La hoja "Iturriak" se renderiza colapsada (atenuada, borde discontinuo) al fondo: solo muestra la miniatura del original como referencia, sin aurrebista combinada ni botones de edición.
+- `GET /api/prints/{id}/preview?rotation=N` sirve un PNG rotado en vivo (sin tocar el fichero) vía `generate_rotated_preview()`. Sin `rotation` sirve el preview cacheado con `Cache-Control: no-cache` (revalida por `Last-Modified`, así los previews rotados-y-horneados se refrescan).
+- El export (`/api/jobs/{id}/export`) genera **una página por tile** en el formato del tile; las hojas normales mantienen una página por hoja en el formato del trabajo (`sheet_formats` en `export_job_pdf`).
 - `POST /api/jobs` acepta `source_user` (opcional) y `activate` (bool). Si se pasa `source_user`, el trabajo se crea sin activar globalmente y se asigna como activo del usuario si `activate=true`.
 - El modal "Lan berria" puebla dinámicamente un desplegable de usuarios con los `source_user` distintos de los trabajos existentes.
 
@@ -84,6 +93,7 @@ PYTHONPATH=/srv/SW/CADPrinter python backend/watcher.py
 
 ## Cosas a tener en cuenta al modificar
 
+- **Mantén este CLAUDE.md actualizado en cada cambio.** Instrucción permanente del usuario (azkue_inigo): cada vez que se modifique comportamiento, endpoints, schema o flujo de la UI, refleja el cambio aquí en el mismo turno.
 - Si cambias el schema de `prints` o `jobs`, añade la columna también en la migración dentro de `init_db()` en `database.py` (patrón `PRAGMA table_info` + `ALTER TABLE`).
 - El endpoint `/api/jobs/{id}/export` genera el PDF en `/tmp/` y lo sirve con `FileResponse`. No se cachea en disco.
 - Los toasts del frontend desaparecen solos a los 3 segundos; no bloquean la UI.

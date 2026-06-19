@@ -384,8 +384,10 @@ def print_preview(print_id: int, rotation: int = 0):
         preview = p["preview_path"]
         if not preview or not os.path.exists(preview):
             raise HTTPException(404, "Preview not available")
+        # no-cache → browser revalidates via Last-Modified; rotated previews
+        # (same URL, new mtime) refetch, unchanged ones return a cheap 304.
         return FileResponse(preview, media_type="image/png",
-                            headers={"Cache-Control": "max-age=3600"})
+                            headers={"Cache-Control": "no-cache"})
     finally:
         conn.close()
 
@@ -421,6 +423,46 @@ async def update_print(print_id: int, body: PrintUpdate):
             conn.execute("UPDATE prints SET offset_y_mm = ? WHERE id = ?", (body.offset_y_mm, print_id))
         conn.commit()
         await broadcast("print_updated", {"print_id": print_id, "job_id": p["job_id"]})
+        return dict(conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone())
+    finally:
+        conn.close()
+
+
+class PrintEdit(BaseModel):
+    rotation: int = 0
+    offset_x_mm: float = 0
+    offset_y_mm: float = 0
+
+
+@app.post("/api/prints/{print_id}/edit")
+async def edit_print(print_id: int, body: PrintEdit):
+    """Bake rotation into the PDF (if any) and store position offsets.
+
+    Used by the unified edit modal when the print is NOT being split (1×1).
+    """
+    conn = db.get_db()
+    try:
+        p = conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone()
+        if not p:
+            raise HTTPException(404, "Print not found")
+        p = dict(p)
+        pdf_path = str(db.PRINTS_DIR / p["filename"])
+
+        new_format = p["format"]
+        if body.rotation and body.rotation % 360 != 0 and os.path.exists(pdf_path):
+            if not pdf_utils.apply_rotation_to_pdf(pdf_path, body.rotation):
+                raise HTTPException(500, "Error rotating PDF")
+            # Regenerate the print thumbnail and re-detect format (dims may swap)
+            if p["preview_path"]:
+                pdf_utils.generate_preview(pdf_path, p["preview_path"])
+            new_format = pdf_utils.detect_format(pdf_path)
+
+        conn.execute(
+            "UPDATE prints SET offset_x_mm = ?, offset_y_mm = ?, format = ? WHERE id = ?",
+            (body.offset_x_mm, body.offset_y_mm, new_format, print_id)
+        )
+        conn.commit()
+        await broadcast("job_updated", {"job_id": p["job_id"]})
         return dict(conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone())
     finally:
         conn.close()
