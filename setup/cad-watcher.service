@@ -8,7 +8,7 @@ Type=simple
 User=__SERVICE_USER__
 WorkingDirectory=__PROJECT_DIR__
 ExecStart=__PROJECT_DIR__/venv/bin/python backend/watcher.py \
-    --watch-dir /var/spool/cups-pdf/ANONYMOUS \
+    --watch-dir /var/spool/cups-pdf \
     --api http://localhost:8080
 Restart=on-failure
 RestartSec=10
