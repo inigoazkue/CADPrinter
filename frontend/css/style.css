@@ -826,24 +826,30 @@ body {
 
 .split-modal-body {
   display: flex;
-  gap: 20px;
-  overflow: hidden;
   flex: 1;
+  min-height: 0;
   padding: 18px 20px;
   gap: 18px;
+  overflow-y: auto;   /* safety net: scroll if content ever exceeds the modal */
 }
 
 .split-left {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  align-items: flex-start;
 }
 
+/* The wrap shrinks to the (size-capped) image so the cut lines, which are
+   positioned as a % of the wrap, stay aligned with the preview. */
 .split-preview-wrap {
   position: relative;
-  flex: 1;
+  width: fit-content;
+  max-width: 100%;
+  max-height: 60vh;
   background: #E5E0DA;
   border-radius: var(--radius);
   overflow: hidden;
@@ -852,7 +858,9 @@ body {
 
 .split-preview-wrap img {
   display: block;
-  width: 100%;
+  max-width: 100%;
+  max-height: 60vh;
+  width: auto;
   height: auto;
 }
 
