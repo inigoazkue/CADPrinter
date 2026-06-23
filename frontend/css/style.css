@@ -503,6 +503,8 @@ body {
 .ctrl-btn.del:hover { background: #FDECEA; }
 .ctrl-btn.toggle { color: var(--text-muted); }
 .ctrl-btn.toggle.on { color: var(--success); }
+.ctrl-btn.rotate { color: #4B7A8E; font-size: 15px; line-height: 1; }
+.ctrl-btn.rotate:hover { background: #EEF4F7; color: #2A5A6E; }
 
 /* ── Format mismatch badge ───────────────────────────────────────────────── */
 .format-warn {

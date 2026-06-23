@@ -179,6 +179,14 @@
 <!-- ── Toast ─────────────────────────────────────────────────── -->
   <div id="toast" class="toast hidden"></div>
 
-  <script src="/js/app.js?v=20260622b"></script>
+  <!-- Load app.js with a per-load token so the browser/proxy can never serve a
+       stale build. Once this index.html lands, the JS self-refreshes forever. -->
+  <script>
+    (function () {
+      var s = document.createElement('script');
+      s.src = '/js/app.js?t=' + Date.now();
+      document.body.appendChild(s);
+    })();
+  </script>
 </body>
 </html>

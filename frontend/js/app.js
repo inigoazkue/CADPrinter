@@ -407,6 +407,21 @@ function renderPrint(p, sheetId, jobFmt) {
     safeCall(() => API.updatePrint(p.id, { enabled: !p.enabled }).then(() => loadJob(state.selectedJobId)));
   });
 
+  const rotateBtn = el('button', 'ctrl-btn rotate', '↻');
+  rotateBtn.title = 'Biratu 90°';
+  rotateBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    safeCall(async () => {
+      await API.editPrint(p.id, {
+        rotation: 90,
+        offset_x_mm: p.offset_x_mm || 0,
+        offset_y_mm: p.offset_y_mm || 0,
+      });
+      await loadJob(state.selectedJobId);
+      showToast('90° biratuta');
+    });
+  });
+
   const delBtn = el('button', 'ctrl-btn del', '✕');
   delBtn.title = 'Geruza ezabatu';
   delBtn.addEventListener('click', e => {
@@ -415,6 +430,7 @@ function renderPrint(p, sheetId, jobFmt) {
   });
 
   controls.appendChild(toggleBtn);
+  controls.appendChild(rotateBtn);
   controls.appendChild(delBtn);
 
   thumb.appendChild(img);
