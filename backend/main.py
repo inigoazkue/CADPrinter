@@ -208,19 +208,13 @@ def export_job(job_id: int):
             enabled = [p for p in sheet["prints"] if p["enabled"]]
             if not enabled:
                 continue
-            tile_prints = sorted(
-                [p for p in enabled if p.get("tile_col") is not None],
-                key=lambda p: (p.get("tile_row") or 0) * 100 + (p.get("tile_col") or 0)
-            )
-            if tile_prints:
-                for tp in tile_prints:
-                    sheets_paths.append([str(db.PRINTS_DIR / tp["filename"])])
-                    sheets_offsets.append([{"x_mm": 0, "y_mm": 0}])
-                    sheet_formats.append(tp.get("format") or job["format"])
-            else:
-                sheets_paths.append([str(db.PRINTS_DIR / p["filename"]) for p in enabled])
-                sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0} for p in enabled])
-                sheet_formats.append(job["format"])
+            # A sheet with split tiles exports as ONE page at the tile format,
+            # overlaying the pieces at their offsets (same as the preview).
+            tile_prints = [p for p in enabled if p.get("tile_col") is not None]
+            fmt_for_sheet = (tile_prints[0].get("format") or job["format"]) if tile_prints else job["format"]
+            sheets_paths.append([str(db.PRINTS_DIR / p["filename"]) for p in enabled])
+            sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0} for p in enabled])
+            sheet_formats.append(fmt_for_sheet)
 
         if not sheets_paths:
             raise HTTPException(400, "No hay capas habilitadas para exportar")
@@ -320,17 +314,15 @@ def sheet_preview(sheet_id: int):
         ).fetchall()
         preview_path = str(db.PREVIEWS_DIR / f"sheet_{sheet_id}_combined.png")
 
+        # If the sheet holds split tiles, the combined preview is rendered at the
+        # tile format (e.g. A3) and the tiles are OVERLAID (superimposed), each
+        # at its own offset, so the user can reposition the pieces over a single
+        # sheet. Otherwise use the job format.
         tile_prints = [p for p in prints if p["tile_col"] is not None]
-        if tile_prints:
-            tile_items = [(str(db.PRINTS_DIR / p["filename"]), p["tile_col"], p["tile_row"])
-                          for p in tile_prints]
-            cols = max(t[1] for t in tile_items) + 1
-            rows = max(t[2] for t in tile_items) + 1
-            pdf_utils.generate_grid_preview(tile_items, cols, rows, preview_path)
-        else:
-            paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
-            offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
-            pdf_utils.generate_sheet_preview(paths, job["format"], preview_path, offsets=offsets)
+        fmt = (tile_prints[0]["format"] or job["format"]) if tile_prints else job["format"]
+        paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
+        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
+        pdf_utils.generate_sheet_preview(paths, fmt, preview_path, offsets=offsets)
 
         if not os.path.exists(preview_path):
             raise HTTPException(500, "Error generating preview")
@@ -538,16 +530,18 @@ async def split_print(print_id: int, body: SplitParams):
         conn.execute("UPDATE prints SET sheet_id = ?, enabled = 0 WHERE id = ?",
                      (source_sheet_id, print_id))
 
-        # Insert all tiles on the ORIGINAL sheet with position metadata
+        # Insert all tiles on the ORIGINAL sheet as normal enabled layers.
+        # They start superimposed (offset 0); the user drags each piece in the
+        # edit modal to compose the single sheet. The combined preview overlays
+        # them at the tile format.
         tile_print_ids = []
         base_id = _new_id()
-        tile_items_for_preview = []
 
         for i, tile_path in enumerate(tile_paths):
             col = i % body.cols
             row_i = i // body.cols
             tile_filename = Path(tile_path).name
-            tile_orig_name = f"panel_{row_i+1}.{col+1}_{orig_name}"
+            tile_orig_name = f"zati_{row_i+1}.{col+1}_{orig_name}"
             tile_id = (base_id + i) % (2 ** 31)
 
             preview_path = str(db.PREVIEWS_DIR / f"{tile_id}.png")
@@ -558,17 +552,12 @@ async def split_print(print_id: int, body: SplitParams):
             conn.execute("""
                 INSERT INTO prints
                   (id, job_id, sheet_id, filename, original_name, preview_path,
-                   order_num, format, source_user, enabled, tile_col, tile_row)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                   order_num, format, source_user, enabled, tile_col, tile_row,
+                   offset_x_mm, offset_y_mm)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, 0)
             """, (tile_id, job_id, original_sheet_id, tile_filename, tile_orig_name,
                   preview_path, i + 1, body.tile_format, p["source_user"], col, row_i))
             tile_print_ids.append(tile_id)
-            tile_items_for_preview.append((tile_path, col, row_i))
-
-        # Generate grid preview for the result sheet
-        grid_preview_path = str(db.PREVIEWS_DIR / f"sheet_{original_sheet_id}_combined.png")
-        pdf_utils.generate_grid_preview(tile_items_for_preview, body.cols, body.rows,
-                                        grid_preview_path)
 
         conn.commit()
         await broadcast("job_updated", {"job_id": job_id})
@@ -802,4 +791,15 @@ async def delete_cups_printer(username: str):
 
 # ── Static frontend ───────────────────────────────────────────────────────────
 
-app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that forces revalidation so updated JS/CSS/HTML never serve
+    stale from the browser cache. ETag/Last-Modified still yield cheap 304s when
+    the file is unchanged."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", NoCacheStaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

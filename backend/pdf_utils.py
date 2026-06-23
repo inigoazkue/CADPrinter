@@ -146,68 +146,6 @@ def generate_rotated_preview(pdf_path: str, rotation: int, width_px: int = 300):
         return None
 
 
-def generate_grid_preview(
-    tile_items: list,
-    cols: int,
-    rows: int,
-    preview_path: str,
-    width_px: int = 500,
-) -> bool:
-    """
-    Compose split tiles into a side-by-side grid preview.
-    tile_items: list of (pdf_path, col, row) tuples.
-    """
-    try:
-        if not tile_items:
-            return False
-        # Determine cell size from first available tile
-        tw, th = PAGE_SIZES_PT["A3"]
-        for path, _, _ in tile_items:
-            if path and os.path.exists(path):
-                try:
-                    doc = fitz.open(path)
-                    tw, th = doc[0].rect.width, doc[0].rect.height
-                    doc.close()
-                    break
-                except Exception:
-                    pass
-
-        canvas_w = tw * cols
-        canvas_h = th * rows
-        out = fitz.open()
-        page = out.new_page(width=canvas_w, height=canvas_h)
-        page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
-
-        for path, col, row in tile_items:
-            if path and os.path.exists(path):
-                try:
-                    src = fitz.open(path)
-                    dest = fitz.Rect(col * tw, row * th, (col + 1) * tw, (row + 1) * th)
-                    page.show_pdf_page(dest, src, 0)
-                    src.close()
-                except Exception as e:
-                    print(f"[grid_preview] Skipping {path}: {e}")
-
-        for c in range(1, cols):
-            x = c * tw
-            page.draw_line(fitz.Point(x, 0), fitz.Point(x, canvas_h),
-                           color=(0.4, 0.4, 0.4), width=3)
-        for r in range(1, rows):
-            y = r * th
-            page.draw_line(fitz.Point(0, y), fitz.Point(canvas_w, y),
-                           color=(0.4, 0.4, 0.4), width=3)
-
-        scale = width_px / canvas_w
-        mat = fitz.Matrix(scale, scale)
-        pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=fitz.csRGB)
-        pix.save(preview_path)
-        out.close()
-        return True
-    except Exception as e:
-        print(f"[grid_preview] Error: {e}")
-        return False
-
-
 def split_pdf_tiles(
     pdf_path: str,
     output_dir: str,

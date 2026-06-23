@@ -386,9 +386,13 @@ function renderPrint(p, sheetId, jobFmt) {
   img.onerror = () => { img.style.background = '#f1f5f9'; img.alt = ''; };
   img.style.cursor = 'pointer';
   img.title = 'Editatu (biratu / zatitu / kokatu)';
+  // For split tiles the sheet preview is rendered at the tile format, so the
+  // drag-to-position conversion must use that format, not the job format.
+  const isTile = p.tile_col !== null && p.tile_col !== undefined;
+  const refFmt = isTile ? (p.format || jobFmt) : jobFmt;
   img.addEventListener('click', e => {
     e.stopPropagation();
-    openEditModal(p, jobFmt);
+    openEditModal(p, refFmt);
   });
 
   const footer = el('div', 'print-thumb-footer', escHtml((p.original_name || p.filename).replace(/\.\w+$/, '')));
