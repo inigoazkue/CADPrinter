@@ -675,12 +675,19 @@ function refreshModalMode() {
   syncModalControls();
 }
 
+// Sheet dimensions in mm, flipped to landscape if the previewed layer is landscape.
+function refMM(fmt, img) {
+  const mm = PAGE_SIZES_MM[fmt] || PAGE_SIZES_MM.A3;
+  if (img && img.naturalWidth && img.naturalWidth > img.naturalHeight) return [mm[1], mm[0]];
+  return mm;
+}
+
 function applyPositionTransform() {
   const wrap = document.getElementById('split-preview-wrap');
   const img = document.getElementById('split-preview-img');
   const W = wrap.clientWidth;
   const H = img.clientHeight || wrap.clientHeight;
-  const mm = PAGE_SIZES_MM[splitState.jobFmt] || PAGE_SIZES_MM.A3;
+  const mm = refMM(splitState.jobFmt, img);
   splitState.tx = (splitState.offsetX / mm[0]) * W;
   splitState.ty = (splitState.offsetY / mm[1]) * H;
   img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
@@ -696,7 +703,7 @@ function setupPositionDrag(wrap, img) {
     img.setPointerCapture(e.pointerId);
     const W = wrap.clientWidth;
     const H = img.clientHeight || wrap.clientHeight;
-    const mm = PAGE_SIZES_MM[splitState.jobFmt] || PAGE_SIZES_MM.A3;
+    const mm = refMM(splitState.jobFmt, img);
     const startX = e.clientX, startY = e.clientY;
     const baseTx = splitState.tx, baseTy = splitState.ty;
     function onMove(me) {

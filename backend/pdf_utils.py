@@ -50,6 +50,26 @@ def generate_preview(pdf_path: str, preview_path: str, width_px: int = 300) -> b
         return False
 
 
+def _oriented_canvas(fmt: str, pdf_paths: list) -> tuple:
+    """Return (width, height) in pt for `fmt`, flipped to landscape if the first
+    available layer is landscape. Keeps the folio orientation in sync with the
+    (possibly rotated) content so scale is preserved."""
+    fw, fh = PAGE_SIZES_PT.get(fmt, PAGE_SIZES_PT["A3"])
+    for path in pdf_paths or []:
+        if path and os.path.exists(path):
+            try:
+                d = fitz.open(path)
+                r = d[0].rect
+                content_landscape = r.width > r.height
+                d.close()
+                if content_landscape != (fw > fh):
+                    return fh, fw
+            except Exception:
+                pass
+            break
+    return fw, fh
+
+
 def generate_sheet_preview(
     pdf_paths: list[str],
     fmt: str,
@@ -57,11 +77,17 @@ def generate_sheet_preview(
     width_px: int = 500,
     offsets: list = None,
 ) -> bool:
-    """Overlay all PDFs on a blank page and render as PNG."""
+    """Overlay all PDFs on a blank sheet and render as PNG.
+
+    The canvas (folio) takes the orientation of the content: if the layers are
+    landscape, the sheet is landscape too — so rotating a layer rotates the whole
+    folio and the scale stays correct. Each layer is placed at its NATIVE size
+    (not stretched to fill), positioned by its offset, so nothing is distorted.
+    """
     try:
-        fw, fh = PAGE_SIZES_PT.get(fmt, PAGE_SIZES_PT["A3"])
+        cw, ch = _oriented_canvas(fmt, pdf_paths)
         out = fitz.open()
-        page = out.new_page(width=fw, height=fh)
+        page = out.new_page(width=cw, height=ch)
 
         # White background
         page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
@@ -70,16 +96,17 @@ def generate_sheet_preview(
             if path and os.path.exists(path):
                 try:
                     src = fitz.open(path)
+                    sw, sh = src[0].rect.width, src[0].rect.height
                     off = (offsets[path_idx] if offsets and path_idx < len(offsets) else None) or {}
                     off_x = (off.get('x_mm') or 0) * PT_PER_MM
                     off_y = (off.get('y_mm') or 0) * PT_PER_MM
-                    dest = fitz.Rect(off_x, off_y, fw + off_x, fh + off_y)
+                    dest = fitz.Rect(off_x, off_y, off_x + sw, off_y + sh)
                     page.show_pdf_page(dest, src, 0)
                     src.close()
                 except Exception as e:
                     print(f"[preview] Skipping {path}: {e}")
 
-        scale = width_px / fw
+        scale = width_px / cw
         mat = fitz.Matrix(scale, scale)
         pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=fitz.csRGB)
         pix.save(preview_path)
@@ -241,8 +268,8 @@ def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str
         for sheet_idx, sheet_paths in enumerate(sheets_pdf_paths):
             page_fmt = (sheet_formats[sheet_idx]
                         if sheet_formats and sheet_idx < len(sheet_formats) else None) or fmt
-            fw, fh = PAGE_SIZES_PT.get(page_fmt, PAGE_SIZES_PT["A3"])
-            page = out.new_page(width=fw, height=fh)
+            cw, ch = _oriented_canvas(page_fmt, sheet_paths)
+            page = out.new_page(width=cw, height=ch)
             page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
             sheet_off_list = (sheets_offsets[sheet_idx]
                               if sheets_offsets and sheet_idx < len(sheets_offsets)
@@ -251,12 +278,13 @@ def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str
                 if path and os.path.exists(path):
                     try:
                         src = fitz.open(path)
+                        sw, sh = src[0].rect.width, src[0].rect.height
                         off = (sheet_off_list[path_idx]
                                if sheet_off_list and path_idx < len(sheet_off_list)
                                else None) or {}
                         off_x = (off.get('x_mm') or 0) * PT_PER_MM
                         off_y = (off.get('y_mm') or 0) * PT_PER_MM
-                        dest = fitz.Rect(off_x, off_y, fw + off_x, fh + off_y)
+                        dest = fitz.Rect(off_x, off_y, off_x + sw, off_y + sh)
                         page.show_pdf_page(dest, src, 0)
                         src.close()
                     except Exception as e:
