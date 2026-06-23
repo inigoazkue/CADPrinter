@@ -381,7 +381,8 @@ function renderPrint(p, sheetId, jobFmt) {
   thumb.draggable = true;
 
   const img = el('img');
-  img.src = API.printPreviewUrl(p.id);
+  // Thumbnail shows the layer placed on its folio: rotated + at its offset.
+  img.src = API.printPreviewUrl(p.id) + '?placed=1';
   img.alt = p.original_name || p.filename;
   img.onerror = () => { img.style.background = '#f1f5f9'; img.alt = ''; };
   img.style.cursor = 'pointer';

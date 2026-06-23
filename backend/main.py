@@ -358,7 +358,7 @@ async def upload_print(sheet_id: int, file: UploadFile = File(...)):
 
 
 @app.get("/api/prints/{print_id}/preview")
-def print_preview(print_id: int, rotation: int = 0):
+def print_preview(print_id: int, rotation: int = 0, placed: int = 0):
     conn = db.get_db()
     try:
         p = conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone()
@@ -372,6 +372,20 @@ def print_preview(print_id: int, rotation: int = 0):
                 if data:
                     return Response(content=data, media_type="image/png",
                                     headers={"Cache-Control": "no-store"})
+
+        # "placed" = render this single layer ON its folio (oriented canvas) at
+        # its offset, so the thumbnail shows the layer rotated AND positioned
+        # exactly as it sits on the sheet.
+        if placed:
+            pdf_path = str(db.PRINTS_DIR / p["filename"])
+            if os.path.exists(pdf_path):
+                job = db.db_get_job(conn, p["job_id"])
+                fmt = (p["format"] if p["tile_col"] is not None else job["format"]) or "A3"
+                offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0}]
+                placed_path = str(db.PREVIEWS_DIR / f"placed_{print_id}.png")
+                if pdf_utils.generate_sheet_preview([pdf_path], fmt, placed_path, offsets=offsets):
+                    return FileResponse(placed_path, media_type="image/png",
+                                        headers={"Cache-Control": "no-store"})
 
         preview = p["preview_path"]
         if not preview or not os.path.exists(preview):
@@ -469,6 +483,9 @@ async def delete_print(print_id: int):
             raise HTTPException(404, "Print not found")
         job_id = p["job_id"]
         _delete_print_files(p["filename"], p["preview_path"])
+        placed = db.PREVIEWS_DIR / f"placed_{print_id}.png"
+        if placed.exists():
+            placed.unlink(missing_ok=True)
         conn.execute("DELETE FROM prints WHERE id = ?", (print_id,))
         conn.commit()
         await broadcast("print_deleted", {"print_id": print_id, "job_id": job_id})
