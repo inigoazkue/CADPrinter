@@ -212,7 +212,9 @@ def split_pdf_tiles(
 
             out = fitz.open()
             page = out.new_page(width=tw, height=th)
-            page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
+            # No white background fill: tiles must be TRANSPARENT so that when
+            # they are overlaid (superimposed) on a sheet, every piece is
+            # visible instead of the top one hiding the others.
             page.show_pdf_page(page.rect, src_doc, 0, clip=fitz.Rect(x0, y0, x1, y1))
 
             tile_name = f"tile_{r}_{c}_{os.urandom(4).hex()}.pdf"

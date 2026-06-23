@@ -605,7 +605,7 @@ function openEditModal(p, jobFmt) {
   document.getElementById('split-overlap').value = 5;
   document.getElementById('split-overlap-val').textContent = '5 mm';
   document.getElementById('split-tile-format').value = 'A3';
-  document.getElementById('btn-split-rotate').textContent = '↻ 0°';
+  document.getElementById('btn-split-rotate').textContent = '↻ Biratu · 0°';
   document.getElementById('btn-submit-split').disabled = false;
 
   const img = document.getElementById('split-preview-img');
@@ -805,7 +805,7 @@ function wireSplitControls() {
 
   document.getElementById('btn-split-rotate').addEventListener('click', () => {
     splitState.rotation = (splitState.rotation + 90) % 360;
-    const labels = ['↻ 0°', '↻ 90°', '↻ 180°', '↻ 270°'];
+    const labels = ['↻ Biratu · 0°', '↻ Biratu · 90°', '↻ Biratu · 180°', '↻ Biratu · 270°'];
     document.getElementById('btn-split-rotate').textContent = labels[splitState.rotation / 90];
     // Reload preview from server with rotation applied
     const img = document.getElementById('split-preview-img');
