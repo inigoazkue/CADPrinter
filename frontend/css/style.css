@@ -424,6 +424,7 @@ body {
 .prints-grid {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-start;   /* cards keep their own height (portrait/landscape) */
   gap: 12px;
   min-height: 60px;
 }
@@ -453,8 +454,8 @@ body {
 
 .print-thumb img {
   width: 100%;
-  aspect-ratio: 1/1.414;
-  object-fit: cover;
+  height: auto;            /* take the placed preview's real proportions, so the
+                              whole card reshapes (portrait/landscape) on rotate */
   display: block;
   background: var(--bg);
 }
