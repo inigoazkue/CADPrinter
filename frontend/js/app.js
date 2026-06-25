@@ -215,9 +215,47 @@ async function selectJob(id) {
   await safeCall(() => loadJob(id));
 }
 
+/* ── Print / export with 1:1 reminder ───────────────────────────────────── */
+const PRINT_REMINDER_KEY = 'cadprinter_hide_print_reminder';
+let _pendingExportJobId = null;
+
+function requestExport(jobId) {
+  if (jobId == null) return;
+  if (localStorage.getItem(PRINT_REMINDER_KEY) === '1') {
+    doExport(jobId);
+    return;
+  }
+  _pendingExportJobId = jobId;
+  const cb = document.getElementById('print-reminder-hide');
+  if (cb) cb.checked = false;
+  document.getElementById('modal-print-reminder').classList.remove('hidden');
+}
+
+function doExport(jobId) {
+  window.open('/api/jobs/' + jobId + '/export', '_blank');
+}
+
+function closePrintReminder() {
+  document.getElementById('modal-print-reminder').classList.add('hidden');
+  _pendingExportJobId = null;
+}
+
+function confirmPrintReminder() {
+  if (document.getElementById('print-reminder-hide').checked) {
+    localStorage.setItem(PRINT_REMINDER_KEY, '1');
+  }
+  const id = _pendingExportJobId;
+  document.getElementById('modal-print-reminder').classList.add('hidden');
+  _pendingExportJobId = null;
+  if (id != null) doExport(id);
+}
+
+function openHelp()  { document.getElementById('modal-help').classList.remove('hidden'); }
+function closeHelp() { document.getElementById('modal-help').classList.add('hidden'); }
+
 /* ── Job actions from sidebar ───────────────────────────────────────────── */
 function printJob(id) {
-  window.open('/api/jobs/' + id + '/export', '_blank');
+  requestExport(id);
 }
 
 async function renameJob(id, currentName) {
@@ -601,6 +639,7 @@ function isSplitMode() {
 function openEditModal(p, jobFmt) {
   splitState.printId = p.id;
   splitState.jobFmt = jobFmt || p.format || 'A3';
+  splitState.layerFmt = p.format || splitState.jobFmt;
   splitState.rotation = 0;
   splitState.overlapMm = 5;
   splitState.tileFormat = 'A3';
@@ -626,7 +665,7 @@ function openEditModal(p, jobFmt) {
   document.getElementById('btn-submit-split').disabled = false;
 
   const img = document.getElementById('split-preview-img');
-  img.style.transform = '';
+  resetImgStyles(img);
   img.src = '';
   img.onload = () => refreshModalMode();
   img.src = API.printPreviewUrl(p.id) + '?_=' + Date.now();
@@ -658,39 +697,73 @@ function syncModalControls() {
   if (h2) h2.textContent = split ? 'PDF zatitu tilesetan' : 'Geruza editatu';
 }
 
+function resetImgStyles(img) {
+  ['position', 'left', 'top', 'width', 'height', 'maxWidth', 'maxHeight', 'transform']
+    .forEach(prop => { img.style[prop] = ''; });
+}
+
 function refreshModalMode() {
   const wrap = document.getElementById('split-preview-wrap');
   const img = document.getElementById('split-preview-img');
   wrap.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
 
   if (isSplitMode()) {
-    // Tile mode: no position offset, show draggable cut lines + overlays.
-    img.style.transform = '';
+    // Tile mode: wrap hugs the image; show draggable cut lines + overlays.
+    wrap.classList.remove('folio-box');
+    wrap.style.width = '';
+    wrap.style.height = '';
+    resetImgStyles(img);
     img.style.cursor = 'default';
     renderSplitDividers();
   } else {
-    // Position mode: drag image to set offset.
+    // Position mode: the wrap is a DIN-proportioned folio; drag the layer.
     img.style.cursor = 'move';
     applyPositionTransform();
   }
   syncModalControls();
 }
 
-// Sheet dimensions in mm, flipped to landscape if the previewed layer is landscape.
-function refMM(fmt, img) {
+// Paper size in mm, flipped to landscape when `landscape` is true. Base is portrait.
+function orientMM(fmt, landscape) {
   const mm = PAGE_SIZES_MM[fmt] || PAGE_SIZES_MM.A3;
-  if (img && img.naturalWidth && img.naturalWidth > img.naturalHeight) return [mm[1], mm[0]];
-  return mm;
+  return landscape ? [mm[1], mm[0]] : [mm[0], mm[1]];
 }
 
+// Position mode: the preview box takes the FOLIO (sheet) proportions so you can
+// see at a glance whether the layer fits inside; the layer image is sized
+// relative to the folio and dragged with its offset.
 function applyPositionTransform() {
   const wrap = document.getElementById('split-preview-wrap');
   const img = document.getElementById('split-preview-img');
-  const W = wrap.clientWidth;
-  const H = img.clientHeight || wrap.clientHeight;
-  const mm = refMM(splitState.jobFmt, img);
-  splitState.tx = (splitState.offsetX / mm[0]) * W;
-  splitState.ty = (splitState.offsetY / mm[1]) * H;
+
+  const landscape = img.naturalWidth > img.naturalHeight;
+  const folio = orientMM(splitState.jobFmt, landscape);
+  const layer = orientMM(splitState.layerFmt, landscape);
+
+  // Box size: fit the folio proportions inside the available area.
+  const availW = (wrap.parentElement && wrap.parentElement.clientWidth) || 600;
+  const maxH = Math.min(window.innerHeight * 0.58, 480);
+  let boxW = availW, boxH = availW * (folio[1] / folio[0]);
+  if (boxH > maxH) { boxH = maxH; boxW = maxH * (folio[0] / folio[1]); }
+
+  wrap.classList.add('folio-box');
+  wrap.style.width = boxW + 'px';
+  wrap.style.height = boxH + 'px';
+
+  // Layer image sized relative to the folio (A-series share ratio → no distortion).
+  img.style.position = 'absolute';
+  img.style.maxWidth = 'none';
+  img.style.maxHeight = 'none';
+  img.style.left = '0';
+  img.style.top = '0';
+  img.style.width = (boxW * (layer[0] / folio[0])) + 'px';
+  img.style.height = (boxH * (layer[1] / folio[1])) + 'px';
+
+  splitState._folioMM = folio;
+  splitState._boxW = boxW;
+  splitState._boxH = boxH;
+  splitState.tx = (splitState.offsetX / folio[0]) * boxW;
+  splitState.ty = (splitState.offsetY / folio[1]) * boxH;
   img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
   setupPositionDrag(wrap, img);
 }
@@ -702,17 +775,14 @@ function setupPositionDrag(wrap, img) {
     if (isSplitMode()) return;
     e.preventDefault();
     img.setPointerCapture(e.pointerId);
-    const W = wrap.clientWidth;
-    const H = img.clientHeight || wrap.clientHeight;
-    const mm = refMM(splitState.jobFmt, img);
     const startX = e.clientX, startY = e.clientY;
     const baseTx = splitState.tx, baseTy = splitState.ty;
     function onMove(me) {
       splitState.tx = baseTx + (me.clientX - startX);
       splitState.ty = baseTy + (me.clientY - startY);
       img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
-      splitState.offsetX = (splitState.tx / W) * mm[0];
-      splitState.offsetY = (splitState.ty / H) * mm[1];
+      splitState.offsetX = (splitState.tx / splitState._boxW) * splitState._folioMM[0];
+      splitState.offsetY = (splitState.ty / splitState._boxH) * splitState._folioMM[1];
     }
     img.addEventListener('pointermove', onMove);
     img.addEventListener('pointerup', () => img.removeEventListener('pointermove', onMove), { once: true });
@@ -929,7 +999,14 @@ function wireButtons() {
 
   document.getElementById('btn-export-job').addEventListener('click', () => {
     if (!state.selectedJobId) return;
-    window.open(API.exportJobUrl(state.selectedJobId), '_blank');
+    requestExport(state.selectedJobId);
+  });
+
+  document.getElementById('modal-print-reminder').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closePrintReminder();
+  });
+  document.getElementById('modal-help').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeHelp();
   });
 
   const nameEl = document.getElementById('job-name');
@@ -1020,6 +1097,10 @@ window.closeFormatModal = closeFormatModal;
 window.submitFormat     = submitFormat;
 window.closeSplitModal  = closeSplitModal;
 window.submitSplit      = submitSplit;
+window.openHelp         = openHelp;
+window.closeHelp        = closeHelp;
+window.closePrintReminder   = closePrintReminder;
+window.confirmPrintReminder = confirmPrintReminder;
 
 /* ── Init ───────────────────────────────────────────────────────────────── */
 async function init() {

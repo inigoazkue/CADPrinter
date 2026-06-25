@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.6.1 — 2026-06-25
+
+Ayuda en euskera, recordatorio de impresión 1:1 y marco de edición con proporciones DIN.
+
+### Nuevas funcionalidades
+
+- **Recordatorio al imprimir**: al pulsar «Inprimatu» aparece un aviso (en euskera) recordando imprimir a **«Tamaño real / 100%»** y márgenes a cero, con casilla **«Ez berriro erakutsi»** que se recuerda (localStorage).
+- **Botón de ayuda (?)**: arriba a la derecha; abre una ventana con la explicación estructurada en euskera de cómo funciona la app (lanak, geruzak, editar, aurrebista) e incluye el tema de la impresión 1:1.
+- **Marco de edición con proporciones DIN**: en el modo posición del editor, el recuadro del preview toma las proporciones de la hoja (A3, A4… según orientación) y la capa se escala relativa al folio, para ver de un vistazo si el contenido cabe dentro al arrastrarlo.
+
+---
+
 ## v2.6.0 — 2026-06-25
 
 Editor unificado de capas, split a escala 1:1 real y correcciones de caché/escala.

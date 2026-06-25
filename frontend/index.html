@@ -9,6 +9,9 @@
 </head>
 <body>
 
+  <!-- ── Help button (top-right) ───────────────────────────────── -->
+  <button id="btn-help" class="help-fab" title="Laguntza" onclick="openHelp()">?</button>
+
   <!-- ── Sidebar ───────────────────────────────────────────────── -->
   <aside id="sidebar">
     <div class="sidebar-header">
@@ -16,7 +19,7 @@
         <img src="/img/Eitb_corp.svg.png" class="eitb-logo" alt="EITB" />
         <div class="brand-text">
           <span class="logo">CAD Printer</span>
-          <span class="version-tag">v2.6.0</span>
+          <span class="version-tag">v2.6.1</span>
         </div>
       </div>
       <button class="btn-icon" id="btn-new-job" title="Lan berria">+</button>
@@ -172,6 +175,84 @@
       <div class="modal-footer">
         <button class="btn btn-ghost" onclick="closeSplitModal()">Utzi</button>
         <button class="btn btn-primary" id="btn-submit-split" onclick="submitSplit()">Zatitu</button>
+      </div>
+    </div>
+  </div>
+
+<!-- ── Modal: Inprimatu aurretik (reminder) ──────────────────── -->
+  <div id="modal-print-reminder" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2>Inprimatu aurretik</h2>
+        <button class="btn-close" onclick="closePrintReminder()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Planoa <strong>benetako eskalan (1:1)</strong> atera dadin, inprimatzeko leihoan:</p>
+        <ul class="reminder-list">
+          <li><strong>Eskala:</strong> «Benetako tamaina» / «%100» — EZ «Doitu orrira».</li>
+          <li><strong>Marjinak:</strong> «Bat ere ez».</li>
+          <li>Egiaztatu paper-tamaina (A3, A4…).</li>
+        </ul>
+        <label class="checkbox-label">
+          <input type="checkbox" id="print-reminder-hide" /> Ez berriro erakutsi
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" onclick="closePrintReminder()">Utzi</button>
+        <button class="btn btn-primary" onclick="confirmPrintReminder()">Ulertuta, inprimatu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Laguntza (help) ────────────────────────────────── -->
+  <div id="modal-help" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>Laguntza — CAD Printer</h2>
+        <button class="btn-close" onclick="closeHelp()">✕</button>
+      </div>
+      <div class="modal-body help-body">
+        <h3>Zer da CAD Printer?</h3>
+        <p>AutoCAD-etik bidalitako PDF planoak jaso, erabiltzaileka antolatu, lanetan bildu, aurrebista sortu eta inprimatzeko prest uzten dituen aplikazioa da.</p>
+
+        <h3>Lanak (alboko barra)</h3>
+        <ul>
+          <li><strong>Lan berria sortu:</strong> «+» botoiarekin. Erabiltzaile bati eslei diezaiokezu.</li>
+          <li><strong>Aktibatu:</strong> lan aktiboa da inprimaketa berriak jasoko dituena. Erabiltzaile bakoitzak bere lan aktiboa du.</li>
+          <li><strong>Izena aldatu / Ezabatu:</strong> lan bakoitzaren gainean sagua jarrita agertzen diren botoiekin.</li>
+        </ul>
+
+        <h3>Planoak jaso</h3>
+        <p>Windows-etik «CADPrinter» inprimagailura inprimatzean, planoa automatikoki erabiltzailearen lan aktibora gehitzen da geruza (capa) gisa.</p>
+
+        <h3>Orriak eta geruzak</h3>
+        <ul>
+          <li>Lan bakoitzak <strong>orri</strong> bat edo gehiago izan ditzake.</li>
+          <li>Orri bakoitzak <strong>geruzak</strong> ditu (jasotako planoak): gaitu/desgaitu (✓), ezabatu (✕) eta orriz aldatu daitezke (arrastatuz).</li>
+          <li>PDFak eskuz ere igo daitezke «PDF bat igo eskuz» botoiarekin.</li>
+        </ul>
+
+        <h3>Geruza bat editatu</h3>
+        <p>Geruza baten miniaturan klik eginez editorea irekitzen da:</p>
+        <ul>
+          <li><strong>↻ Biratu:</strong> 90°-ka biratu. Miniaturan ere badago ↻ botoia, editorea ireki gabe biratzeko.</li>
+          <li><strong>Kokatu:</strong> irudia arrastatuz geruza orrian non kokatzen den doitu. Markoak orriaren proportzioak ditu (A3, A4…), datuak barruan sartzen diren begi-bistan ikusteko.</li>
+          <li><strong>Zatitu:</strong> plano handi bat (A2…) zatitan banatzeko. Zati bakoitza <strong>1:1 eskalan</strong> jartzen da, eta arrastatuz orri bakarrean konposatzen dira.</li>
+        </ul>
+
+        <h3>Aurrebista</h3>
+        <p>Orri bakoitzaren eskuinaldean gaitutako geruza guztien aurrebista konbinatua ikusten da, bakoitza bere kokapenarekin.</p>
+
+        <h3>⚠️ Inprimatu — eskala erreala (1:1)</h3>
+        <p>«Inprimatu» sakatzean PDF bat sortzen da tamaina fisiko zehatzarekin (1:1). Baina inprimatzeko leihoak normalean txikitu egiten du «Orrira doitu» aukerarekin (~%94), eta orduan ez dator bat AutoCAD-en jatorrizko eskalarekin. Eskala zuzena lortzeko:</p>
+        <ul>
+          <li><strong>Eskala:</strong> «Benetako tamaina» / «%100» — EZ «Doitu orrira» / «Lehenetsia».</li>
+          <li><strong>Marjinak:</strong> «Bat ere ez».</li>
+          <li>Egiaztatu paper-tamaina zuzena.</li>
+        </ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeHelp()">Itxi</button>
       </div>
     </div>
   </div>
