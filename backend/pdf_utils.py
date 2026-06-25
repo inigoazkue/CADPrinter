@@ -237,12 +237,25 @@ def split_pdf_tiles(
                 x0 += dx; x1 += dx
                 y0 += dy; y1 += dy
 
+            clip = fitz.Rect(x0, y0, x1, y1)
+            cw, ch = clip.width, clip.height
+
+            # Orient the tile page to match the cut piece so it fits 1:1.
+            if (cw > ch) != (tw > th):
+                pw, ph = th, tw
+            else:
+                pw, ph = tw, th
+
             out = fitz.open()
-            page = out.new_page(width=tw, height=th)
+            page = out.new_page(width=pw, height=ph)
             # No white background fill: tiles must be TRANSPARENT so that when
-            # they are overlaid (superimposed) on a sheet, every piece is
-            # visible instead of the top one hiding the others.
-            page.show_pdf_page(page.rect, src_doc, 0, clip=fitz.Rect(x0, y0, x1, y1))
+            # they are overlaid on a sheet every piece is visible.
+            # Place the piece at its TRUE size (1:1), centered — NOT stretched to
+            # fill the page — so the print matches the original scale exactly.
+            ox = (pw - cw) / 2
+            oy = (ph - ch) / 2
+            dest = fitz.Rect(ox, oy, ox + cw, oy + ch)
+            page.show_pdf_page(dest, src_doc, 0, clip=clip)
 
             tile_name = f"tile_{r}_{c}_{os.urandom(4).hex()}.pdf"
             tile_path = str(Path(output_dir) / tile_name)
