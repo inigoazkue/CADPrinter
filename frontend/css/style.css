@@ -1165,7 +1165,9 @@ body {
    can see whether the layer fits inside; size is set inline by JS. */
 .split-preview-wrap.folio-box {
   width: auto;
-  max-width: none;
+  height: min(52vh, 400px);
+  aspect-ratio: var(--folio-ar, 0.7071);   /* sheet proportions (DIN) set by JS */
+  max-width: 100%;
   max-height: none;
   background: #fff;
   border: 1px solid var(--text-muted);

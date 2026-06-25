@@ -740,15 +740,14 @@ function applyPositionTransform() {
   const folio = orientMM(splitState.jobFmt, landscape);
   const layer = orientMM(splitState.layerFmt, landscape);
 
-  // Box size: fit the folio proportions inside the available area.
-  const availW = (wrap.parentElement && wrap.parentElement.clientWidth) || 600;
-  const maxH = Math.min(window.innerHeight * 0.58, 480);
-  let boxW = availW, boxH = availW * (folio[1] / folio[0]);
-  if (boxH > maxH) { boxH = maxH; boxW = maxH * (folio[0] / folio[1]); }
-
+  // The box takes the folio proportions via CSS aspect-ratio (declarative,
+  // so it's reliably DIN-shaped). We just feed it the ratio and read back size.
   wrap.classList.add('folio-box');
-  wrap.style.width = boxW + 'px';
-  wrap.style.height = boxH + 'px';
+  wrap.style.width = '';
+  wrap.style.height = '';
+  wrap.style.setProperty('--folio-ar', (folio[0] / folio[1]).toFixed(4));
+  const boxW = wrap.clientWidth;
+  const boxH = wrap.clientHeight;
 
   // Layer image sized relative to the folio (A-series share ratio → no distortion).
   img.style.position = 'absolute';

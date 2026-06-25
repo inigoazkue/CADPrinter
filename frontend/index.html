@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CAD Printer</title>
   <link rel="icon" href="/img/impresora.png" type="image/png" />
-  <link rel="stylesheet" href="/css/style.css?v=20260622b" />
+  <!-- Load CSS with a per-load token so the browser/proxy can never serve a
+       stale stylesheet after a deploy. -->
+  <script>document.write('<link rel="stylesheet" href="/css/style.css?t=' + Date.now() + '">');</script>
 </head>
 <body>
 
