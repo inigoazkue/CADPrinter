@@ -1,5 +1,37 @@
 # Changelog
 
+## v2.6.0 — 2026-06-25
+
+Editor unificado de capas, split a escala 1:1 real y correcciones de caché/escala.
+
+### Editor unificado de capa
+
+- Al hacer clic en la miniatura de cualquier capa se abre un editor con dos modos automáticos:
+  - **Posición** (defecto en A3/A4 y en piezas ya creadas): arrastrar la imagen para recolocar la capa sobre la hoja.
+  - **Split** (defecto en A0/A1/A2): líneas de corte arrastrables para dividir.
+- Botón **↻ Biratu** en el editor (0/90/180/270°) y también un botón **↻** directo en cada miniatura para rotar 90° de un clic.
+- El preview del modal escala para caber y los controles son siempre accesibles (scroll de seguridad).
+
+### Split: piezas a escala 1:1
+
+- Las piezas de un split se colocan a su **tamaño real (1:1)**, centradas, en una página orientada a la pieza — ya **no se estiran** para llenar el A3 (eso deformaba y cambiaba la escala).
+- Las piezas van como capas normales sobre la misma hoja, transparentes, y se **superponen/componen** arrastrándolas (no se ponen lado a lado). El original pasa a una hoja "Iturriak" de solo consulta (colapsada al fondo).
+- La miniatura de cada capa muestra la capa **colocada en su folio** (rotada + en su posición).
+
+### Escala y orientación
+
+- La aurrebista y la exportación colocan cada capa a **tamaño nativo** (sin estirar) y el folio toma la **orientación del contenido** (al rotar, gira el folio entero manteniendo la escala).
+
+### Caché de estáticos
+
+- El frontend se sirve con `Cache-Control: no-cache` y `index.html` carga `app.js` con un token por carga, para que el navegador/proxy no sirvan versiones rancias tras un deploy.
+
+### Documentación
+
+- **README**: nueva sección sobre imprimir a **escala real (1:1)** — hay que poner el diálogo de impresión en "Tamaño real / 100%" (no "Ajustar a la página"), que era lo que encogía la impresión al ~94%.
+
+---
+
 ## v2.5.0 — 2026-06-19
 
 Revisión completa del flujo de split: arquitectura correcta, drag que funciona, rotación real y hoja Iturriak colapsada.

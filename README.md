@@ -212,6 +212,28 @@ http://<IP-del-servidor>:8080
 
 ---
 
+## ⚠️ Impresión a escala real (1:1) — IMPORTANTE
+
+La aplicación genera el PDF de exportación con el **tamaño físico exacto** del formato (A3 = 297×420 mm, etc.) y coloca el contenido a escala **1:1**. Pero al imprimir ese PDF desde el navegador o un visor, **el diálogo de impresión suele encogerlo** con la opción *"Ajustar a la página" / "Fit to printable area"*, para meterlo dentro del margen no imprimible de la impresora (típicamente ~8-9 mm por lado). El resultado sale a ~94% y **no coincide con la escala del plano original de AutoCAD**.
+
+Para que la impresión salga **exactamente a 1:1**, en el diálogo de imprimir:
+
+1. **Escala → "Tamaño real" / "100%"** (en Chrome: *Más ajustes → Escala → Personalizada → 100*). **NO** dejarlo en *"Ajustar"* / *"Predeterminado"*.
+2. **Márgenes → "Ninguno"** (si la impresora lo permite).
+3. Comprobar el tamaño de papel correcto (A3, A4…).
+
+> Truco para verificar: mide con una regla una cota conocida del plano impreso y compárala con la del original de AutoCAD. Si la app sale más pequeña de forma uniforme, casi seguro está activado el "ajustar a página": cámbialo a 100%.
+
+### Dividir planos grandes (A2 → A3) y componer
+
+Al hacer clic en cualquier capa se abre el editor, donde puedes:
+- **Biratu (↻)**: rotar la capa 90° (gira la miniatura y la aurrebista manteniendo la escala).
+- **Zatitu**: dividir un plano grande en piezas; cada pieza se coloca a **escala 1:1** (no se estira), y se componen arrastrándolas para encajarlas en una sola hoja.
+
+Cada capa también tiene un botón **↻** directo en su miniatura para rotar 90° de un clic, sin abrir el editor.
+
+---
+
 ## Estructura del proyecto
 
 ```
