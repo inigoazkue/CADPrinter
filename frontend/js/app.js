@@ -637,6 +637,11 @@ const splitState = {
   offsetY: 0,
   tx: 0,        // current translate in px (position mode)
   ty: 0,
+  zoom: 1,      // preview zoom factor
+  panX: 0,      // preview pan in px
+  panY: 0,
+  _baseW: 0,    // zoom box base size (unscaled)
+  _baseH: 0,
 };
 
 function autoTiles(fmt) {
@@ -661,6 +666,9 @@ function openEditModal(p, jobFmt) {
   splitState.offsetY = p.offset_y_mm || 0;
   splitState.tx = 0;
   splitState.ty = 0;
+  splitState.zoom = 1;
+  splitState.panX = 0;
+  splitState.panY = 0;
 
   // Large formats default to split intent; others to position intent.
   const big = ['A0', 'A1', 'A2'].includes(p.format);
@@ -716,99 +724,83 @@ function resetImgStyles(img) {
     .forEach(prop => { img.style[prop] = ''; });
 }
 
-function refreshModalMode() {
-  const wrap = document.getElementById('split-preview-wrap');
-  const img = document.getElementById('split-preview-img');
-  wrap.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
-
-  if (isSplitMode()) {
-    // Tile mode: wrap hugs the image; show draggable cut lines + overlays.
-    wrap.classList.remove('folio-box');
-    wrap.style.width = '';
-    wrap.style.height = '';
-    resetImgStyles(img);
-    img.style.cursor = 'default';
-    renderSplitDividers();
-  } else {
-    // Position mode: the wrap is a DIN-proportioned folio; drag the layer.
-    img.style.cursor = 'move';
-    applyPositionTransform();
-  }
-  syncModalControls();
-}
-
 // Paper size in mm, flipped to landscape when `landscape` is true. Base is portrait.
 function orientMM(fmt, landscape) {
   const mm = PAGE_SIZES_MM[fmt] || PAGE_SIZES_MM.A3;
   return landscape ? [mm[1], mm[0]] : [mm[0], mm[1]];
 }
 
-// Position mode: the preview box takes the FOLIO (sheet) proportions so you can
-// see at a glance whether the layer fits inside; the layer image is sized
-// relative to the folio and dragged with its offset.
-function applyPositionTransform() {
-  const wrap = document.getElementById('split-preview-wrap');
-  const img = document.getElementById('split-preview-img');
-
-  const landscape = img.naturalWidth > img.naturalHeight;
-  const folio = orientMM(splitState.jobFmt, landscape);
-  const layer = orientMM(splitState.layerFmt, landscape);
-
-  // The box takes the folio proportions via CSS aspect-ratio (declarative,
-  // so it's reliably DIN-shaped). We just feed it the ratio and read back size.
-  wrap.classList.add('folio-box');
-  wrap.style.width = '';
-  wrap.style.height = '';
-  wrap.style.setProperty('--folio-ar', (folio[0] / folio[1]).toFixed(4));
-  const boxW = wrap.clientWidth;
-  const boxH = wrap.clientHeight;
-
-  // Layer image sized relative to the folio (A-series share ratio → no distortion).
-  img.style.position = 'absolute';
-  img.style.maxWidth = 'none';
-  img.style.maxHeight = 'none';
-  img.style.left = '0';
-  img.style.top = '0';
-  img.style.width = (boxW * (layer[0] / folio[0])) + 'px';
-  img.style.height = (boxH * (layer[1] / folio[1])) + 'px';
-
-  splitState._folioMM = folio;
-  splitState._boxW = boxW;
-  splitState._boxH = boxH;
-  splitState.tx = (splitState.offsetX / folio[0]) * boxW;
-  splitState.ty = (splitState.offsetY / folio[1]) * boxH;
-  img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
-  setupPositionDrag(wrap, img);
+// Fit aspect (aw:ah) inside maxW×maxH (contain), centered.
+function fitRect(aw, ah, maxW, maxH) {
+  let w = maxW, h = maxW * ah / aw;
+  if (h > maxH) { h = maxH; w = maxH * aw / ah; }
+  return { w, h, left: (maxW - w) / 2, top: (maxH - h) / 2 };
 }
 
-function setupPositionDrag(wrap, img) {
-  if (img._posDragWired) return;
-  img._posDragWired = true;
-  img.addEventListener('pointerdown', e => {
-    if (isSplitMode()) return;
-    e.preventDefault();
-    img.setPointerCapture(e.pointerId);
-    const startX = e.clientX, startY = e.clientY;
-    const baseTx = splitState.tx, baseTy = splitState.ty;
-    function onMove(me) {
-      splitState.tx = baseTx + (me.clientX - startX);
-      splitState.ty = baseTy + (me.clientY - startY);
-      img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
-      splitState.offsetX = (splitState.tx / splitState._boxW) * splitState._folioMM[0];
-      splitState.offsetY = (splitState.ty / splitState._boxH) * splitState._folioMM[1];
-    }
-    img.addEventListener('pointermove', onMove);
-    img.addEventListener('pointerup', () => img.removeEventListener('pointermove', onMove), { once: true });
-  });
+function getZoomEl() { return document.getElementById('split-zoom'); }
+
+function applyZoom() {
+  getZoomEl().style.transform =
+    `translate(${splitState.panX}px, ${splitState.panY}px) scale(${splitState.zoom})`;
+}
+
+function resetZoom() {
+  splitState.zoom = 1;
+  // Pan carries the centering offset so the box sits centered in the viewport.
+  splitState.panX = splitState._baseLeft || 0;
+  splitState.panY = splitState._baseTop || 0;
+  applyZoom();
+}
+
+// (Re)build the preview content (image, folio box, cut lines) and lay out the
+// zoom container. Resets zoom/pan to the fitted view.
+function refreshModalMode() {
+  const wrap = document.getElementById('split-preview-wrap');
+  const zoom = getZoomEl();
+  const img = document.getElementById('split-preview-img');
+  zoom.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
+
+  const vpW = wrap.clientWidth, vpH = wrap.clientHeight;
+  const landscape = img.naturalWidth > img.naturalHeight;
+
+  if (isSplitMode()) {
+    // Split mode: the zoom box fits the source image; cut lines overlay it.
+    zoom.classList.remove('folio-box');
+    const r = fitRect(img.naturalWidth || 1, img.naturalHeight || 1, vpW, vpH);
+    splitState._baseW = r.w; splitState._baseH = r.h;
+    splitState._baseLeft = r.left; splitState._baseTop = r.top;
+    Object.assign(zoom.style, { left: '0', top: '0', width: r.w + 'px', height: r.h + 'px' });
+    Object.assign(img.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', maxWidth: 'none', maxHeight: 'none', transform: '', cursor: 'grab' });
+    renderSplitDividers();
+  } else {
+    // Position mode: the zoom box takes the FOLIO (DIN) proportions; the layer
+    // image is sized relative to the folio and dragged to set its offset.
+    zoom.classList.add('folio-box');
+    const folio = orientMM(splitState.jobFmt, landscape);
+    const layer = orientMM(splitState.layerFmt, landscape);
+    const r = fitRect(folio[0], folio[1], vpW, vpH);
+    splitState._baseW = r.w; splitState._baseH = r.h; splitState._folioMM = folio;
+    splitState._baseLeft = r.left; splitState._baseTop = r.top;
+    Object.assign(zoom.style, { left: '0', top: '0', width: r.w + 'px', height: r.h + 'px' });
+    splitState.tx = (splitState.offsetX / folio[0]) * r.w;
+    splitState.ty = (splitState.offsetY / folio[1]) * r.h;
+    Object.assign(img.style, {
+      position: 'absolute', left: '0', top: '0', maxWidth: 'none', maxHeight: 'none',
+      width: (r.w * (layer[0] / folio[0])) + 'px',
+      height: (r.h * (layer[1] / folio[1])) + 'px',
+      transform: `translate(${splitState.tx}px, ${splitState.ty}px)`,
+      cursor: 'move',
+    });
+  }
+  resetZoom();
+  syncModalControls();
 }
 
 function renderSplitDividers() {
-  const wrap = document.getElementById('split-preview-wrap');
-  wrap.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
+  const zoom = getZoomEl();
+  zoom.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
 
-  const W = wrap.clientWidth;
-  const H = wrap.querySelector('img').clientHeight || wrap.clientHeight;
-
+  const W = splitState._baseW, H = splitState._baseH;
   const colEdges = [0, ...splitState.colPositions.map(p => p * W), W];
   const rowEdges = [0, ...splitState.rowPositions.map(p => p * H), H];
 
@@ -824,7 +816,7 @@ function renderSplitDividers() {
       lbl.className = 'split-tile-label';
       lbl.textContent = `T${r + 1}.${c + 1}`;
       ov.appendChild(lbl);
-      wrap.appendChild(ov);
+      zoom.appendChild(ov);
     }
   }
 
@@ -832,26 +824,25 @@ function renderSplitDividers() {
     const div = document.createElement('div');
     div.className = 'split-divider-v';
     div.style.left = (pos * 100) + '%';
-    makeDraggable(div, 'col', i, wrap);
-    wrap.appendChild(div);
+    makeDraggable(div, 'col', i);
+    zoom.appendChild(div);
   });
 
   splitState.rowPositions.forEach((pos, i) => {
     const div = document.createElement('div');
     div.className = 'split-divider-h';
     div.style.top = (pos * 100) + '%';
-    makeDraggable(div, 'row', i, wrap);
-    wrap.appendChild(div);
+    makeDraggable(div, 'row', i);
+    zoom.appendChild(div);
   });
 }
 
-function updateTileOverlays(wrap) {
-  const W = wrap.clientWidth;
-  const imgEl = wrap.querySelector('img');
-  const H = imgEl ? imgEl.clientHeight : wrap.clientHeight;
+function updateTileOverlays() {
+  const zoom = getZoomEl();
+  const W = splitState._baseW, H = splitState._baseH;
   const colEdges = [0, ...splitState.colPositions.map(p => p * W), W];
   const rowEdges = [0, ...splitState.rowPositions.map(p => p * H), H];
-  wrap.querySelectorAll('.split-tile-overlay').forEach((ov, i) => {
+  zoom.querySelectorAll('.split-tile-overlay').forEach((ov, i) => {
     const c = i % splitState.cols;
     const r = Math.floor(i / splitState.cols);
     ov.style.left   = colEdges[c] + 'px';
@@ -861,16 +852,19 @@ function updateTileOverlays(wrap) {
   });
 }
 
-function makeDraggable(divider, axis, idx, wrap) {
+function makeDraggable(divider, axis, idx) {
+  const zoom = getZoomEl();
   divider.addEventListener('pointerdown', e => {
     e.preventDefault();
+    e.stopPropagation();   // don't trigger pan
     divider.setPointerCapture(e.pointerId);
-    const rect = wrap.getBoundingClientRect();
 
     function onMove(me) {
+      // Fraction from the zoom box's on-screen (transformed) rect → zoom/pan-safe.
+      const rect = zoom.getBoundingClientRect();
       const pos = axis === 'col'
-        ? Math.max(0.05, Math.min(0.95, (me.clientX - rect.left) / rect.width))
-        : Math.max(0.05, Math.min(0.95, (me.clientY - rect.top) / rect.height));
+        ? Math.max(0.02, Math.min(0.98, (me.clientX - rect.left) / rect.width))
+        : Math.max(0.02, Math.min(0.98, (me.clientY - rect.top) / rect.height));
       if (axis === 'col') {
         splitState.colPositions[idx] = pos;
         divider.style.left = (pos * 100) + '%';
@@ -878,7 +872,7 @@ function makeDraggable(divider, axis, idx, wrap) {
         splitState.rowPositions[idx] = pos;
         divider.style.top = (pos * 100) + '%';
       }
-      updateTileOverlays(wrap);
+      updateTileOverlays();
     }
 
     divider.addEventListener('pointermove', onMove);
@@ -886,6 +880,81 @@ function makeDraggable(divider, axis, idx, wrap) {
       divider.removeEventListener('pointermove', onMove);
     }, { once: true });
   });
+}
+
+/* ── Zoom & pan ──────────────────────────────────────────────────────────── */
+function zoomAt(factor, clientX, clientY) {
+  const wrap = document.getElementById('split-preview-wrap');
+  const rect = wrap.getBoundingClientRect();
+  const cx = clientX == null ? rect.width / 2 : clientX - rect.left;
+  const cy = clientY == null ? rect.height / 2 : clientY - rect.top;
+  const newZoom = Math.max(1, Math.min(8, splitState.zoom * factor));
+  // Keep the point under the cursor fixed while zooming.
+  splitState.panX = cx - (cx - splitState.panX) / splitState.zoom * newZoom;
+  splitState.panY = cy - (cy - splitState.panY) / splitState.zoom * newZoom;
+  splitState.zoom = newZoom;
+  if (newZoom === 1) {   // snap back to the centered fitted view
+    splitState.panX = splitState._baseLeft || 0;
+    splitState.panY = splitState._baseTop || 0;
+  }
+  applyZoom();
+}
+
+function startPan(e) {
+  const wrap = document.getElementById('split-preview-wrap');
+  e.preventDefault();
+  wrap.setPointerCapture(e.pointerId);
+  wrap.style.cursor = 'grabbing';
+  const sx = e.clientX, sy = e.clientY;
+  const bpx = splitState.panX, bpy = splitState.panY;
+  function onMove(me) {
+    splitState.panX = bpx + (me.clientX - sx);
+    splitState.panY = bpy + (me.clientY - sy);
+    applyZoom();
+  }
+  wrap.addEventListener('pointermove', onMove);
+  wrap.addEventListener('pointerup', () => {
+    wrap.removeEventListener('pointermove', onMove);
+    wrap.style.cursor = '';
+  }, { once: true });
+}
+
+function startLayerDrag(e) {
+  const img = document.getElementById('split-preview-img');
+  e.preventDefault();
+  img.setPointerCapture(e.pointerId);
+  const sx = e.clientX, sy = e.clientY;
+  const baseTx = splitState.tx, baseTy = splitState.ty;
+  function onMove(me) {
+    // Pointer delta is in screen px → divide by zoom to get base px.
+    splitState.tx = baseTx + (me.clientX - sx) / splitState.zoom;
+    splitState.ty = baseTy + (me.clientY - sy) / splitState.zoom;
+    img.style.transform = `translate(${splitState.tx}px, ${splitState.ty}px)`;
+    splitState.offsetX = (splitState.tx / splitState._baseW) * splitState._folioMM[0];
+    splitState.offsetY = (splitState.ty / splitState._baseH) * splitState._folioMM[1];
+  }
+  img.addEventListener('pointermove', onMove);
+  img.addEventListener('pointerup', () => img.removeEventListener('pointermove', onMove), { once: true });
+}
+
+function setupZoomPan() {
+  const wrap = document.getElementById('split-preview-wrap');
+
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY);
+  }, { passive: false });
+
+  wrap.addEventListener('pointerdown', e => {
+    if (e.target.closest('.split-divider-v, .split-divider-h')) return;  // divider handles it
+    const img = document.getElementById('split-preview-img');
+    if (!isSplitMode() && e.target === img) startLayerDrag(e);
+    else startPan(e);
+  });
+
+  document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.25, null, null));
+  document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.25, null, null));
+  document.getElementById('zoom-reset').addEventListener('click', resetZoom);
 }
 
 function wireSplitControls() {
@@ -926,6 +995,8 @@ function wireSplitControls() {
   document.getElementById('modal-split').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeSplitModal();
   });
+
+  setupZoomPan();
 }
 
 async function submitSplit() {

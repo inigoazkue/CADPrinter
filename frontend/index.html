@@ -141,9 +141,16 @@
       <div class="modal-body split-modal-body">
         <div class="split-left">
           <div class="split-preview-wrap" id="split-preview-wrap">
-            <img id="split-preview-img" alt="Aurrebista" />
+            <div class="split-zoom" id="split-zoom">
+              <img id="split-preview-img" alt="Aurrebista" />
+            </div>
           </div>
-          <p class="split-hint">Arrastatu lerro beltzak zatiketa-puntua aldatzeko</p>
+          <div class="split-toolbar">
+            <button type="button" id="zoom-out" class="zoom-btn" title="Txikiagotu">−</button>
+            <button type="button" id="zoom-reset" class="zoom-btn" title="Jatorrizko ikuspegia">▢</button>
+            <button type="button" id="zoom-in" class="zoom-btn" title="Handiagotu">+</button>
+          </div>
+          <p class="split-hint">Arrastatu lerro beltzak zatiketa-puntua aldatzeko · gurpilarekin zoom · arrastatu nabigatzeko</p>
         </div>
         <div class="split-right">
           <div class="split-control-group">
