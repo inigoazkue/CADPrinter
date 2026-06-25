@@ -1,3 +1,6 @@
+/* ── Thumbnail long-side length in px (keeps portrait/landscape equally big) ── */
+const THUMB_LONG = 170;
+
 /* ── Paper sizes in mm (portrait) ──────────────────────────────────────── */
 const PAGE_SIZES_MM = {
   A0: [841, 1189], A1: [594, 841], A2: [420, 594],
@@ -422,7 +425,16 @@ function renderPrint(p, sheetId, jobFmt) {
   // Thumbnail shows the layer placed on its folio: rotated + at its offset.
   // The ?t= token defeats browser/proxy caching so a rotation/offset change is
   // reflected immediately on the next render.
+  // Size the card so the LONG side is constant (THUMB_LONG): portrait and
+  // landscape layers then look equally big, and the card reshapes on rotate.
+  const sizeThumb = () => {
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if (!nw || !nh) return;
+    thumb.style.width = (nw >= nh ? THUMB_LONG : Math.round(THUMB_LONG * nw / nh)) + 'px';
+  };
+  img.addEventListener('load', sizeThumb);
   img.src = API.printPreviewUrl(p.id) + '?placed=1&t=' + Date.now();
+  if (img.complete) sizeThumb();
   img.alt = p.original_name || p.filename;
   img.onerror = () => { img.style.background = '#f1f5f9'; img.alt = ''; };
   img.style.cursor = 'pointer';
