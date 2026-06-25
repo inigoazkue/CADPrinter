@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.6.2 — 2026-06-25
+
+Correcciones del editor y de las miniaturas: marco DIN fiable, giro reflejado y tamaño coherente.
+
+### Correcciones
+
+- **Marco de edición DIN fiable**: el recuadro del modo posición usa ahora `aspect-ratio` CSS, así que adopta de forma fiable las proporciones de la hoja (A3, A4…) en lugar de verse cuadrado.
+- **CSS siempre fresco**: `style.css` se carga con token dinámico (como `app.js`), para que un CSS rancio en caché no vuelva a romper el diseño tras un deploy. (Era la causa de que el marco se viera cuadrado.)
+- **Giro reflejado en la miniatura**: al girar una capa, su miniatura se regenera (token anti-caché en `?placed=1`) y muestra la nueva orientación al instante, igual que la aurrebista.
+- **El recuadro de la miniatura se reforma al girar**: ya no tiene proporción vertical fija; toma la proporción real del folio orientado, de modo que la tarjeta (caja, caption y botones) pasa de vertical a apaisada al girar.
+- **Tamaño coherente horizontal/vertical**: la miniatura mantiene el **lado largo constante**, así una capa apaisada se ve igual de grande que una vertical (antes la apaisada salía más pequeña).
+
+---
+
 ## v2.6.1 — 2026-06-25
 
 Ayuda en euskera, recordatorio de impresión 1:1 y marco de edición con proporciones DIN.
