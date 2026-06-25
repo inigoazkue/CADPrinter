@@ -420,7 +420,9 @@ function renderPrint(p, sheetId, jobFmt) {
 
   const img = el('img');
   // Thumbnail shows the layer placed on its folio: rotated + at its offset.
-  img.src = API.printPreviewUrl(p.id) + '?placed=1';
+  // The ?t= token defeats browser/proxy caching so a rotation/offset change is
+  // reflected immediately on the next render.
+  img.src = API.printPreviewUrl(p.id) + '?placed=1&t=' + Date.now();
   img.alt = p.original_name || p.filename;
   img.onerror = () => { img.style.background = '#f1f5f9'; img.alt = ''; };
   img.style.cursor = 'pointer';
