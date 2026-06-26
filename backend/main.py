@@ -658,7 +658,7 @@ async def internal_new_print(body: InternalPrint):
             if not job:
                 fmt = pdf_utils.detect_format(body.filepath)
                 job_id = db.db_create_job(
-                    conn, f"Lana {_job_counter(conn)}", fmt,
+                    conn, f"{_job_counter(conn)}. lana", fmt,
                     activate_globally=False, source_user=body.source_user
                 )
                 conn.commit()
@@ -671,7 +671,7 @@ async def internal_new_print(body: InternalPrint):
             job = db.db_get_current_job(conn)
             if not job:
                 fmt = pdf_utils.detect_format(body.filepath)
-                job_id = db.db_create_job(conn, f"Lana {_job_counter(conn)}", fmt)
+                job_id = db.db_create_job(conn, f"{_job_counter(conn)}. lana", fmt)
                 conn.commit()
                 job = db.db_get_job(conn, job_id)
                 await broadcast("job_created", {"job_id": job_id})
