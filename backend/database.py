@@ -98,10 +98,15 @@ def get_db() -> sqlite3.Connection:
 # ── Job helpers ──────────────────────────────────────────────────────────────
 
 def db_list_jobs(conn):
+    # Counts exclude the "Iturriak" reference sheet (and its original print),
+    # since it is not a real output sheet.
     return conn.execute("""
         SELECT j.*,
-               (SELECT COUNT(*) FROM sheets s WHERE s.job_id = j.id) AS sheet_count,
-               (SELECT COUNT(*) FROM prints p WHERE p.job_id = j.id) AS print_count
+               (SELECT COUNT(*) FROM sheets s
+                  WHERE s.job_id = j.id AND COALESCE(s.name, '') != 'Iturriak') AS sheet_count,
+               (SELECT COUNT(*) FROM prints p
+                  LEFT JOIN sheets s2 ON p.sheet_id = s2.id
+                  WHERE p.job_id = j.id AND COALESCE(s2.name, '') != 'Iturriak') AS print_count
         FROM jobs j ORDER BY j.created_at DESC
     """).fetchall()
 
