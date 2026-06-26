@@ -397,7 +397,22 @@ function renderSheet(sheet, fmt) {
   body.appendChild(printsCol);
 
   const previewCol = el('div', 'sheet-preview-col');
-  previewCol.appendChild(el('div', 'sheet-preview-label', 'Aurrebista'));
+  const headRow = el('div', 'sheet-preview-head');
+  headRow.appendChild(el('span', 'sheet-preview-label', 'Aurrebista'));
+
+  const rotBtn = el('button', 'sheet-rotate-btn', '↻');
+  rotBtn.title = 'Aurrebista biratu 90° (irteera)';
+  rotBtn.addEventListener('click', async () => {
+    const newRot = ((sheet.rotation || 0) + 90) % 360;
+    await safeCall(async () => {
+      await API.updateSheet(sheet.id, { rotation: newRot });
+      sheet.rotation = newRot;
+      const im = document.querySelector(`img[data-sheet-preview="${sheet.id}"]`);
+      if (im) { im.style.display = ''; im.src = API.sheetPreviewUrl(sheet.id); }
+    });
+  });
+  headRow.appendChild(rotBtn);
+  previewCol.appendChild(headRow);
 
   if (sheet.prints.some(p => p.enabled)) {
     const img = el('img', 'sheet-preview-img');

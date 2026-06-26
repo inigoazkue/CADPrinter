@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS sheets (
     job_id     INTEGER NOT NULL,
     name       TEXT,
     order_num  INTEGER NOT NULL DEFAULT 1,
+    rotation   INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
 );
@@ -78,6 +79,9 @@ def init_db():
     job_cols = [row[1] for row in conn.execute("PRAGMA table_info(jobs)")]
     if 'source_user' not in job_cols:
         conn.execute("ALTER TABLE jobs ADD COLUMN source_user TEXT")
+    sheet_cols = [row[1] for row in conn.execute("PRAGMA table_info(sheets)")]
+    if 'rotation' not in sheet_cols:
+        conn.execute("ALTER TABLE sheets ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0")
     conn.commit()
     conn.close()
 

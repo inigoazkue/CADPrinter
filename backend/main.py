@@ -204,6 +204,7 @@ def export_job(job_id: int):
         sheets_paths = []
         sheets_offsets = []
         sheet_formats = []
+        sheet_rotations = []
         for sheet in job["sheets"]:
             enabled = [p for p in sheet["prints"] if p["enabled"]]
             if not enabled:
@@ -215,6 +216,7 @@ def export_job(job_id: int):
             sheets_paths.append([str(db.PRINTS_DIR / p["filename"]) for p in enabled])
             sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0} for p in enabled])
             sheet_formats.append(fmt_for_sheet)
+            sheet_rotations.append(sheet.get("rotation") or 0)
 
         if not sheets_paths:
             raise HTTPException(400, "No hay capas habilitadas para exportar")
@@ -222,7 +224,8 @@ def export_job(job_id: int):
         out_name = f"export_{job_id}_{uuid.uuid4().hex[:6]}.pdf"
         out_path = db.DATA_DIR / out_name
         ok = pdf_utils.export_job_pdf(sheets_paths, job["format"], str(out_path),
-                                      sheets_offsets=sheets_offsets, sheet_formats=sheet_formats)
+                                      sheets_offsets=sheets_offsets, sheet_formats=sheet_formats,
+                                      sheet_rotations=sheet_rotations)
         if not ok:
             raise HTTPException(500, "Error generando PDF")
 
@@ -258,6 +261,7 @@ async def add_sheet(job_id: int):
 
 class SheetUpdate(BaseModel):
     name: Optional[str] = None
+    rotation: Optional[int] = None
 
 
 @app.patch("/api/sheets/{sheet_id}")
@@ -269,6 +273,9 @@ async def update_sheet(sheet_id: int, body: SheetUpdate):
             raise HTTPException(404, "Sheet not found")
         if body.name is not None:
             conn.execute("UPDATE sheets SET name = ? WHERE id = ?", (body.name.strip(), sheet_id))
+        if body.rotation is not None:
+            conn.execute("UPDATE sheets SET rotation = ? WHERE id = ?",
+                         (body.rotation % 360, sheet_id))
         conn.commit()
         await broadcast("sheet_updated", {"sheet_id": sheet_id, "job_id": sheet["job_id"]})
         return dict(conn.execute("SELECT * FROM sheets WHERE id = ?", (sheet_id,)).fetchone())
@@ -322,7 +329,9 @@ def sheet_preview(sheet_id: int):
         fmt = (tile_prints[0]["format"] or job["format"]) if tile_prints else job["format"]
         paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
         offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
-        pdf_utils.generate_sheet_preview(paths, fmt, preview_path, offsets=offsets)
+        rotation = sheet["rotation"] if "rotation" in sheet.keys() else 0
+        pdf_utils.generate_sheet_preview(paths, fmt, preview_path, offsets=offsets,
+                                         rotation=rotation or 0)
 
         if not os.path.exists(preview_path):
             raise HTTPException(500, "Error generating preview")

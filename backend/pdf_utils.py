@@ -51,23 +51,65 @@ def generate_preview(pdf_path: str, preview_path: str, width_px: int = 300) -> b
 
 
 def _oriented_canvas(fmt: str, pdf_paths: list) -> tuple:
-    """Return (width, height) in pt for `fmt`, flipped to landscape if the first
-    available layer is landscape. Keeps the folio orientation in sync with the
-    (possibly rotated) content so scale is preserved."""
+    """Return (width, height) in pt for `fmt`, flipped to landscape if the
+    LARGEST-area layer is landscape. Using the largest layer (not the first)
+    keeps the canvas orientation stable when small layers are rotated."""
     fw, fh = PAGE_SIZES_PT.get(fmt, PAGE_SIZES_PT["A3"])
+    best_area = -1.0
+    landscape = fw > fh
     for path in pdf_paths or []:
         if path and os.path.exists(path):
             try:
                 d = fitz.open(path)
                 r = d[0].rect
-                content_landscape = r.width > r.height
                 d.close()
-                if content_landscape != (fw > fh):
-                    return fh, fw
+                area = r.width * r.height
+                if area > best_area:
+                    best_area = area
+                    landscape = r.width > r.height
             except Exception:
                 pass
-            break
+    if landscape != (fw > fh):
+        return fh, fw
     return fw, fh
+
+
+def _compose_sheet(pdf_paths, offsets, fmt, rotation=0, auto_orient=True):
+    """Build a single-page fitz doc: every layer placed at its NATIVE size and
+    offset on a `fmt` canvas, then the whole page rotated by `rotation`
+    (0/90/180/270) as a unit. Returns (doc, width_pt, height_pt)."""
+    if auto_orient:
+        cw, ch = _oriented_canvas(fmt, pdf_paths)
+    else:
+        cw, ch = PAGE_SIZES_PT.get(fmt, PAGE_SIZES_PT["A3"])
+
+    comp = fitz.open()
+    cp = comp.new_page(width=cw, height=ch)
+    cp.draw_rect(cp.rect, color=(1, 1, 1), fill=(1, 1, 1))
+    for i, path in enumerate(pdf_paths):
+        if path and os.path.exists(path):
+            try:
+                src = fitz.open(path)
+                sw, sh = src[0].rect.width, src[0].rect.height
+                off = (offsets[i] if offsets and i < len(offsets) else None) or {}
+                ox = (off.get('x_mm') or 0) * PT_PER_MM
+                oy = (off.get('y_mm') or 0) * PT_PER_MM
+                cp.show_pdf_page(fitz.Rect(ox, oy, ox + sw, oy + sh), src, 0)
+                src.close()
+            except Exception as e:
+                print(f"[compose] Skipping {path}: {e}")
+
+    rot = rotation % 360
+    if rot == 0:
+        return comp, cw, ch
+
+    ow, oh = (ch, cw) if rot in (90, 270) else (cw, ch)
+    out = fitz.open()
+    op = out.new_page(width=ow, height=oh)
+    op.draw_rect(op.rect, color=(1, 1, 1), fill=(1, 1, 1))
+    op.show_pdf_page(op.rect, comp, 0, rotate=rot)
+    comp.close()
+    return out, ow, oh
 
 
 def generate_sheet_preview(
@@ -76,41 +118,19 @@ def generate_sheet_preview(
     preview_path: str,
     width_px: int = 500,
     offsets: list = None,
+    rotation: int = 0,
+    auto_orient: bool = True,
 ) -> bool:
-    """Overlay all PDFs on a blank sheet and render as PNG.
-
-    The canvas (folio) takes the orientation of the content: if the layers are
-    landscape, the sheet is landscape too — so rotating a layer rotates the whole
-    folio and the scale stays correct. Each layer is placed at its NATIVE size
-    (not stretched to fill), positioned by its offset, so nothing is distorted.
-    """
+    """Overlay all PDFs on a blank sheet (each at native size + offset) and render
+    as PNG. `rotation` rotates the whole composed page (manual sheet rotation).
+    `auto_orient` fits the canvas to the largest layer's orientation."""
     try:
-        cw, ch = _oriented_canvas(fmt, pdf_paths)
-        out = fitz.open()
-        page = out.new_page(width=cw, height=ch)
-
-        # White background
-        page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
-
-        for path_idx, path in enumerate(pdf_paths):
-            if path and os.path.exists(path):
-                try:
-                    src = fitz.open(path)
-                    sw, sh = src[0].rect.width, src[0].rect.height
-                    off = (offsets[path_idx] if offsets and path_idx < len(offsets) else None) or {}
-                    off_x = (off.get('x_mm') or 0) * PT_PER_MM
-                    off_y = (off.get('y_mm') or 0) * PT_PER_MM
-                    dest = fitz.Rect(off_x, off_y, off_x + sw, off_y + sh)
-                    page.show_pdf_page(dest, src, 0)
-                    src.close()
-                except Exception as e:
-                    print(f"[preview] Skipping {path}: {e}")
-
-        scale = width_px / cw
+        doc, ow, _oh = _compose_sheet(pdf_paths, offsets, fmt, rotation, auto_orient)
+        scale = width_px / ow
         mat = fitz.Matrix(scale, scale)
-        pix = page.get_pixmap(matrix=mat, alpha=False, colorspace=fitz.csRGB)
+        pix = doc[0].get_pixmap(matrix=mat, alpha=False, colorspace=fitz.csRGB)
         pix.save(preview_path)
-        out.close()
+        doc.close()
         return True
     except Exception as e:
         print(f"[preview] Error generating sheet preview: {e}")
@@ -268,41 +288,24 @@ def split_pdf_tiles(
 
 
 def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str,
-                   sheets_offsets: list = None, sheet_formats: list = None) -> bool:
+                   sheets_offsets: list = None, sheet_formats: list = None,
+                   sheet_rotations: list = None) -> bool:
     """
-    Build final multi-page PDF.
+    Build final multi-page PDF (one page per sheet).
     sheets_pdf_paths: one list of pdf paths per sheet (overlaid → one output page).
-    sheets_offsets: parallel list of offset lists per sheet, each offset is {"x_mm", "y_mm"}.
-    sheet_formats: optional per-page format override (e.g. tile pages use tile format).
+    sheets_offsets: parallel list of offset lists per sheet, each offset {"x_mm","y_mm"}.
+    sheet_formats: optional per-page format override (tile pages use tile format).
+    sheet_rotations: optional per-page manual rotation (0/90/180/270).
     """
     try:
         out = fitz.open()
-
-        for sheet_idx, sheet_paths in enumerate(sheets_pdf_paths):
-            page_fmt = (sheet_formats[sheet_idx]
-                        if sheet_formats and sheet_idx < len(sheet_formats) else None) or fmt
-            cw, ch = _oriented_canvas(page_fmt, sheet_paths)
-            page = out.new_page(width=cw, height=ch)
-            page.draw_rect(page.rect, color=(1, 1, 1), fill=(1, 1, 1))
-            sheet_off_list = (sheets_offsets[sheet_idx]
-                              if sheets_offsets and sheet_idx < len(sheets_offsets)
-                              else None)
-            for path_idx, path in enumerate(sheet_paths):
-                if path and os.path.exists(path):
-                    try:
-                        src = fitz.open(path)
-                        sw, sh = src[0].rect.width, src[0].rect.height
-                        off = (sheet_off_list[path_idx]
-                               if sheet_off_list and path_idx < len(sheet_off_list)
-                               else None) or {}
-                        off_x = (off.get('x_mm') or 0) * PT_PER_MM
-                        off_y = (off.get('y_mm') or 0) * PT_PER_MM
-                        dest = fitz.Rect(off_x, off_y, off_x + sw, off_y + sh)
-                        page.show_pdf_page(dest, src, 0)
-                        src.close()
-                    except Exception as e:
-                        print(f"[export] Skipping {path}: {e}")
-
+        for i, sheet_paths in enumerate(sheets_pdf_paths):
+            page_fmt = (sheet_formats[i] if sheet_formats and i < len(sheet_formats) else None) or fmt
+            offs = sheets_offsets[i] if sheets_offsets and i < len(sheets_offsets) else None
+            rot = sheet_rotations[i] if sheet_rotations and i < len(sheet_rotations) else 0
+            doc, _ow, _oh = _compose_sheet(sheet_paths, offs, page_fmt, rot, auto_orient=True)
+            out.insert_pdf(doc)
+            doc.close()
         out.save(output_path)
         out.close()
         return True

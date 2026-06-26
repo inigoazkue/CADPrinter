@@ -524,6 +524,13 @@ body {
 }
 
 /* ── Sheet preview ───────────────────────────────────────────────────────── */
+.sheet-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .sheet-preview-label {
   font-size: 10px;
   font-weight: 700;
@@ -531,6 +538,20 @@ body {
   letter-spacing: 1px;
   color: var(--text-muted);
 }
+
+.sheet-rotate-btn {
+  width: 24px;
+  height: 22px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: #4B7A8E;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.sheet-rotate-btn:hover { background: #EEF4F7; color: #2A5A6E; }
 
 .sheet-preview-img {
   width: 100%;
