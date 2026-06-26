@@ -786,7 +786,7 @@ function refreshModalMode() {
   const wrap = document.getElementById('split-preview-wrap');
   const zoom = getZoomEl();
   const img = document.getElementById('split-preview-img');
-  zoom.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay').forEach(e => e.remove());
+  zoom.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay, .folio-outline').forEach(e => e.remove());
 
   const vpW = wrap.clientWidth, vpH = wrap.clientHeight;
   const landscape = img.naturalWidth > img.naturalHeight;
@@ -819,6 +819,11 @@ function refreshModalMode() {
       transform: `translate(${splitState.tx}px, ${splitState.ty}px)`,
       cursor: 'move',
     });
+    // Page outline drawn ON TOP of the image (dashed) so you can see whether the
+    // content goes outside the sheet while dragging. Doesn't block the drag.
+    const outline = document.createElement('div');
+    outline.className = 'folio-outline';
+    zoom.appendChild(outline);
   }
   resetZoom();
   syncModalControls();
