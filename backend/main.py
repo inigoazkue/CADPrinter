@@ -415,7 +415,8 @@ def print_preview(print_id: int, rotation: int = 0, placed: int = 0, hires: int 
         if hires:
             pdf_path = str(db.PRINTS_DIR / p["filename"])
             if os.path.exists(pdf_path):
-                data = pdf_utils.generate_rotated_preview(pdf_path, rotation or 0, width_px=2000)
+                # White → transparent so background ghost layers show through.
+                data = pdf_utils.generate_editor_preview(pdf_path, rotation or 0, width_px=2000)
                 if data:
                     return Response(content=data, media_type="image/png",
                                     headers={"Cache-Control": "no-store"})

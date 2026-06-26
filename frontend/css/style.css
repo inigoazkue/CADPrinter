@@ -883,6 +883,7 @@ body {
 .split-zoom {
   position: absolute;
   transform-origin: 0 0;
+  background: #fff;   /* transparent (white-keyed) layers show on white paper */
 }
 
 .split-zoom.folio-box {

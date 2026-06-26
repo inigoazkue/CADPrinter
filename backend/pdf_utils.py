@@ -193,6 +193,47 @@ def generate_rotated_preview(pdf_path: str, rotation: int, width_px: int = 300):
         return None
 
 
+def generate_editor_preview(pdf_path: str, rotation: int = 0, width_px: int = 2000):
+    """High-res render for the editor with WHITE treated as TRANSPARENT, so the
+    background ghost layers show through. Rendered once per open/rotate; zoom is
+    pure CSS. Needs numpy for the white→transparent keying; without it, falls
+    back to a transparent-background render (works for vector PDFs with no white
+    fill)."""
+    try:
+        src = fitz.open(pdf_path)
+        sp = src[0]
+        rot = rotation % 360
+        if rot in (90, 270):
+            rw, rh = sp.rect.height, sp.rect.width
+        else:
+            rw, rh = sp.rect.width, sp.rect.height
+        out = fitz.open()
+        page = out.new_page(width=rw, height=rh)
+        page.show_pdf_page(page.rect, src, 0, rotate=rot)
+        scale = width_px / rw
+        mat = fitz.Matrix(scale, scale)
+        pix = page.get_pixmap(matrix=mat, alpha=True, colorspace=fitz.csRGB)
+        src.close()
+        out.close()
+
+        # Key out near-white pixels → transparent (so the ghost shows through).
+        try:
+            import numpy as np
+            arr = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n).copy()
+            if pix.n == 4:
+                near_white = (arr[:, :, 0] >= 245) & (arr[:, :, 1] >= 245) & (arr[:, :, 2] >= 245)
+                arr[near_white, 3] = 0
+                keyed = fitz.Pixmap(fitz.csRGB, pix.width, pix.height, arr.tobytes(), True)
+                return keyed.tobytes("png")
+        except Exception as e:
+            print(f"[editor_preview] white-key skipped (no numpy?): {e}")
+
+        return pix.tobytes("png")
+    except Exception as e:
+        print(f"[editor_preview] Error: {e}")
+        return None
+
+
 def split_pdf_tiles(
     pdf_path: str,
     output_dir: str,
