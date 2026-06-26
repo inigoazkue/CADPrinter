@@ -1,5 +1,17 @@
 # Changelog
 
+## v2.6.3 — 2026-06-26
+
+Zoom y desplazamiento (pan) en el editor para colocar los cortes con precisión.
+
+### Nuevas funcionalidades
+
+- **Zoom en el editor**: botones **−**, **▢** (vista inicial) y **+**, y zoom con la **rueda del ratón** (hacia el punto del cursor, 1× a 8×). Permite afinar el punto exacto del corte.
+- **Navegación (pan)**: con zoom aplicado, se arrastra con el ratón (click + arrastrar) para desplazarse por el plano.
+- La imagen y las líneas de corte escalan juntas; el arrastre de las líneas y el de la capa (modo posición) siguen siendo precisos a cualquier nivel de zoom.
+
+---
+
 ## v2.6.2 — 2026-06-25
 
 Correcciones del editor y de las miniaturas: marco DIN fiable, giro reflejado y tamaño coherente.
