@@ -343,6 +343,40 @@ def sheet_preview(sheet_id: int):
         conn.close()
 
 
+@app.get("/api/sheets/{sheet_id}/ghost")
+def sheet_ghost(sheet_id: int, exclude: int = 0):
+    """Composite of the OTHER enabled layers on the sheet (excluding `exclude`),
+    on the base folio (no manual rotation). Used as a faint background in the
+    editor so the user can place a layer without overlapping the rest."""
+    conn = db.get_db()
+    try:
+        sheet = conn.execute("SELECT * FROM sheets WHERE id = ?", (sheet_id,)).fetchone()
+        if not sheet:
+            raise HTTPException(404, "Sheet not found")
+        job = db.db_get_job(conn, sheet["job_id"])
+        prints = conn.execute(
+            "SELECT * FROM prints WHERE sheet_id = ? AND enabled = 1 AND id != ? "
+            "ORDER BY order_num, received_at",
+            (sheet_id, exclude)
+        ).fetchall()
+        if not prints:
+            raise HTTPException(404, "No other layers")
+        tile_prints = [p for p in prints if p["tile_col"] is not None]
+        fmt = (tile_prints[0]["format"] or job["format"]) if tile_prints else job["format"]
+        paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
+        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
+        ghost_path = str(db.PREVIEWS_DIR / f"ghost_{sheet_id}.png")
+        # auto_orient=False + rotation=0 → same base folio the editor shows.
+        pdf_utils.generate_sheet_preview(paths, fmt, ghost_path, offsets=offsets,
+                                         rotation=0, auto_orient=False)
+        if not os.path.exists(ghost_path):
+            raise HTTPException(500, "Error generating ghost")
+        return FileResponse(ghost_path, media_type="image/png",
+                            headers={"Cache-Control": "no-store"})
+    finally:
+        conn.close()
+
+
 # ── Prints ────────────────────────────────────────────────────────────────────
 
 @app.post("/api/sheets/{sheet_id}/prints", status_code=201)
@@ -369,12 +403,22 @@ async def upload_print(sheet_id: int, file: UploadFile = File(...)):
 
 
 @app.get("/api/prints/{print_id}/preview")
-def print_preview(print_id: int, rotation: int = 0, placed: int = 0):
+def print_preview(print_id: int, rotation: int = 0, placed: int = 0, hires: int = 0):
     conn = db.get_db()
     try:
         p = conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone()
         if not p:
             raise HTTPException(404, "Print not found")
+
+        # "hires" = high-resolution render for the editor, so zoom stays sharp.
+        # Rendered once on open/rotate; zoom itself is pure CSS (no per-zoom lag).
+        if hires:
+            pdf_path = str(db.PRINTS_DIR / p["filename"])
+            if os.path.exists(pdf_path):
+                data = pdf_utils.generate_rotated_preview(pdf_path, rotation or 0, width_px=2000)
+                if data:
+                    return Response(content=data, media_type="image/png",
+                                    headers={"Cache-Control": "no-store"})
 
         if rotation and rotation % 360 != 0:
             pdf_path = str(db.PRINTS_DIR / p["filename"])

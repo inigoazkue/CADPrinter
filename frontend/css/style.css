@@ -901,6 +901,14 @@ body {
   z-index: 6;
 }
 
+/* Faint background showing the other layers of the sheet (position mode), so
+   you can place the current layer without overlapping them. */
+.folio-ghost {
+  pointer-events: none;
+  opacity: 0.28;
+  filter: grayscale(1);
+}
+
 .split-zoom img {
   display: block;
 }

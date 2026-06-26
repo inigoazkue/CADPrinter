@@ -49,6 +49,7 @@ const API = {
   updateSheet:     (id, data)   => API.request('PATCH', `/sheets/${id}`, data),
   deleteSheet:     (id)         => API.request('DELETE', `/sheets/${id}`),
   sheetPreviewUrl: (id)         => `/api/sheets/${id}/preview?t=${Date.now()}`,
+  sheetGhostUrl:   (id, excl)   => `/api/sheets/${id}/ghost?exclude=${excl}&t=${Date.now()}`,
 
   deletePrint:     (id)         => API.request('DELETE', `/prints/${id}`),
   updatePrint:     (id, data)   => API.request('PATCH', `/prints/${id}`, data),
@@ -697,6 +698,10 @@ function openEditModal(p, jobFmt) {
   splitState.zoom = 1;
   splitState.panX = 0;
   splitState.panY = 0;
+  splitState.sheetId = p.sheet_id;
+  // Are there other enabled layers on this sheet? (for the ghost background)
+  const _sh = ((state.selectedJob && state.selectedJob.sheets) || []).find(s => s.id === p.sheet_id);
+  splitState.hasGhost = !!(_sh && _sh.prints.some(x => x.enabled && x.id !== p.id));
 
   // Large formats default to split intent; others to position intent.
   const big = ['A0', 'A1', 'A2'].includes(p.format);
@@ -718,7 +723,7 @@ function openEditModal(p, jobFmt) {
   resetImgStyles(img);
   img.src = '';
   img.onload = () => refreshModalMode();
-  img.src = API.printPreviewUrl(p.id) + '?_=' + Date.now();
+  img.src = API.printPreviewUrl(p.id) + '?hires=1&_=' + Date.now();
 
   document.getElementById('modal-split').classList.remove('hidden');
   syncModalControls();
@@ -748,7 +753,7 @@ function syncModalControls() {
 }
 
 function resetImgStyles(img) {
-  ['position', 'left', 'top', 'width', 'height', 'maxWidth', 'maxHeight', 'transform']
+  ['position', 'left', 'top', 'width', 'height', 'maxWidth', 'maxHeight', 'transform', 'zIndex']
     .forEach(prop => { img.style[prop] = ''; });
 }
 
@@ -786,7 +791,7 @@ function refreshModalMode() {
   const wrap = document.getElementById('split-preview-wrap');
   const zoom = getZoomEl();
   const img = document.getElementById('split-preview-img');
-  zoom.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay, .folio-outline').forEach(e => e.remove());
+  zoom.querySelectorAll('.split-divider-v, .split-divider-h, .split-tile-overlay, .folio-outline, .folio-ghost').forEach(e => e.remove());
 
   const vpW = wrap.clientWidth, vpH = wrap.clientHeight;
   const landscape = img.naturalWidth > img.naturalHeight;
@@ -801,15 +806,29 @@ function refreshModalMode() {
     Object.assign(img.style, { position: 'absolute', left: '0', top: '0', width: '100%', height: '100%', maxWidth: 'none', maxHeight: 'none', transform: '', cursor: 'grab' });
     renderSplitDividers();
   } else {
-    // Position mode: the zoom box takes the FOLIO (DIN) proportions; the layer
-    // image is sized relative to the folio and dragged to set its offset.
+    // Position mode: the zoom box is the base folio (PORTRAIT, like the actual
+    // sheet composition) so offsets match the aurrebista. The layer image is
+    // sized relative to the folio (its own orientation) and dragged to set its
+    // offset.
     zoom.classList.add('folio-box');
-    const folio = orientMM(splitState.jobFmt, landscape);
+    const folio = orientMM(splitState.jobFmt, false);
     const layer = orientMM(splitState.layerFmt, landscape);
     const r = fitRect(folio[0], folio[1], vpW, vpH);
     splitState._baseW = r.w; splitState._baseH = r.h; splitState._folioMM = folio;
     splitState._baseLeft = r.left; splitState._baseTop = r.top;
     Object.assign(zoom.style, { left: '0', top: '0', width: r.w + 'px', height: r.h + 'px' });
+
+    // Ghost: the other layers of this sheet, faint, so you can avoid overlapping.
+    if (splitState.hasGhost && splitState.sheetId) {
+      const ghost = document.createElement('img');
+      ghost.className = 'folio-ghost';
+      Object.assign(ghost.style, { position: 'absolute', left: '0', top: '0',
+        width: r.w + 'px', height: r.h + 'px', zIndex: '1' });
+      ghost.src = API.sheetGhostUrl(splitState.sheetId, splitState.printId);
+      ghost.onerror = () => ghost.remove();
+      zoom.appendChild(ghost);
+    }
+
     splitState.tx = (splitState.offsetX / folio[0]) * r.w;
     splitState.ty = (splitState.offsetY / folio[1]) * r.h;
     Object.assign(img.style, {
@@ -817,7 +836,7 @@ function refreshModalMode() {
       width: (r.w * (layer[0] / folio[0])) + 'px',
       height: (r.h * (layer[1] / folio[1])) + 'px',
       transform: `translate(${splitState.tx}px, ${splitState.ty}px)`,
-      cursor: 'move',
+      cursor: 'move', zIndex: '2',
     });
     // Page outline drawn ON TOP of the image (dashed) so you can see whether the
     // content goes outside the sheet while dragging. Doesn't block the drag.
@@ -1021,8 +1040,8 @@ function wireSplitControls() {
     img.style.transform = '';
     img.src = '';
     img.onload = () => refreshModalMode();
-    const rotParam = splitState.rotation ? `?rotation=${splitState.rotation}` : '?_=' + Date.now();
-    img.src = `/api/prints/${splitState.printId}/preview${rotParam}`;
+    const rotParam = splitState.rotation ? `&rotation=${splitState.rotation}` : '';
+    img.src = `/api/prints/${splitState.printId}/preview?hires=1${rotParam}&_=${Date.now()}`;
   });
 
   document.getElementById('modal-split').addEventListener('click', e => {
