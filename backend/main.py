@@ -632,6 +632,22 @@ async def split_print(print_id: int, body: SplitParams):
                   preview_path, i + 1, body.tile_format, p["source_user"], col, row_i))
             tile_print_ids.append(tile_id)
 
+        # After a split, the job's real output sheets are the tiles, not the
+        # original (now disabled in "Iturriak"). Set the job format to the
+        # LARGEST tile format ever produced for this job (smallest A-number).
+        # This naturally keeps the biggest across several splits: if later
+        # splits make smaller tiles, the larger one stays. Only splits change
+        # the format automatically — adding pages (tile_col IS NULL) never does.
+        tile_fmts = [
+            r[0] for r in conn.execute(
+                "SELECT DISTINCT format FROM prints "
+                "WHERE job_id = ? AND tile_col IS NOT NULL", (job_id,)
+            ).fetchall() if r[0] in VALID_FORMATS
+        ]
+        if tile_fmts:
+            largest = min(tile_fmts, key=lambda f: int(f[1:]))  # A0 is largest
+            conn.execute("UPDATE jobs SET format = ? WHERE id = ?", (largest, job_id))
+
         conn.commit()
         await broadcast("job_updated", {"job_id": job_id})
         return {"tile_print_ids": tile_print_ids}
