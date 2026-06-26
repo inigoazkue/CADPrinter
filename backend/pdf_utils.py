@@ -303,7 +303,9 @@ def export_job_pdf(sheets_pdf_paths: list[list[str]], fmt: str, output_path: str
             page_fmt = (sheet_formats[i] if sheet_formats and i < len(sheet_formats) else None) or fmt
             offs = sheets_offsets[i] if sheets_offsets and i < len(sheets_offsets) else None
             rot = sheet_rotations[i] if sheet_rotations and i < len(sheet_rotations) else 0
-            doc, _ow, _oh = _compose_sheet(sheet_paths, offs, page_fmt, rot, auto_orient=True)
+            # auto_orient=False: output orientation comes ONLY from the manual
+            # per-sheet rotation, never from the layers.
+            doc, _ow, _oh = _compose_sheet(sheet_paths, offs, page_fmt, rot, auto_orient=False)
             out.insert_pdf(doc)
             doc.close()
         out.save(output_path)

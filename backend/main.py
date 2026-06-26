@@ -330,8 +330,10 @@ def sheet_preview(sheet_id: int):
         paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
         offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
         rotation = sheet["rotation"] if "rotation" in sheet.keys() else 0
+        # auto_orient=False: the sheet canvas does NOT follow the layers; its
+        # orientation is controlled ONLY by the manual sheet rotation (↻ button).
         pdf_utils.generate_sheet_preview(paths, fmt, preview_path, offsets=offsets,
-                                         rotation=rotation or 0)
+                                         rotation=rotation or 0, auto_orient=False)
 
         if not os.path.exists(preview_path):
             raise HTTPException(500, "Error generating preview")
