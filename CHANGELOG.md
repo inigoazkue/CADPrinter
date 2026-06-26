@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.6.5 — 2026-06-26
+
+Transparencia del blanco en el editor, contorno al borde real, nombres de trabajo y formato según el corte.
+
+### Editor
+
+- **Blanco = transparente**: la aurrebista de alta resolución del editor trata todo el blanco como transparente (keying con numpy, umbral RGB≥245, con _fallback_ si no hay numpy), de modo que el **fantasma de las demás capas se ve a través** de las zonas blancas de la capa que estás colocando. `#split-zoom` lleva fondo blanco (papel).
+- **Contorno = borde real del papel**: la línea discontinua del modo posición ya no queda metida hacia dentro de una línea continua. Se quitó el borde sólido de `.folio-box` y el contorno se dibuja con `outline` + `outline-offset:-1.5px`, **exactamente en el borde del folio**, para que los datos que caigan sobre la línea (zona útil) sí se impriman.
+
+### Trabajos y formato
+
+- **Nombres automáticos en euskera**: los trabajos creados automáticamente (al llegar un PDF sin trabajo activo) se nombran **"1. lana", "2. lana"…** en lugar de "Lana 1".
+- **Formato según el tile más grande**: tras un corte (split), el formato del trabajo pasa al del **tile más grande** producido en ese trabajo (menor número A; se conserva el mayor entre varios cortes). El original queda en "Iturriak" y deja de imponer su formato. Añadir páginas no cambia el formato; **solo los cortes lo hacen automáticamente**.
+
+### Requisitos
+
+- Añadido **numpy** a `requirements.txt` (necesario para el keying del blanco; con _fallback_ a fondo transparente si falta).
+
+---
+
 ## v2.6.4 — 2026-06-26
 
 Rotación de salida manual, numeración de hojas y contornos en el editor.
