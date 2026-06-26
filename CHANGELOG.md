@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.6.4 — 2026-06-26
+
+Rotación de salida manual, numeración de hojas y contornos en el editor.
+
+### Rotación
+
+- **La aurrebista no se auto-orienta**: la orientación de la salida es 100% manual. La aurrebista tiene su propio botón **↻** (por hoja, `sheets.rotation`) que rota la página final como unidad y se aplica también al export. Rotar una capa solo gira el contenido de esa capa (y su miniatura), nunca la aurrebista.
+
+### Hojas y conteos
+
+- **Numeración secuencial de hojas**: las hojas se nombran **"1. orria", "2. orria"…** (euskera), numerando solo las hojas sin nombre. Corrige el salto de número que provocaba la hoja de referencia "Iturriak".
+- **Conteos del sidebar en euskera**: singular con el número detrás (`orri 1`, `geruza 1`), plural delante (`2 orri`, `3 geruza`). Los conteos **excluyen la hoja "Iturriak"** (no es una hoja de salida real).
+
+### Editor
+
+- **Contorno de página**: en el modo posición, el recuadro de la hoja se dibuja en **línea discontinua por encima** de la imagen, para ver si el contenido se sale de la hoja al arrastrar.
+
+---
+
 ## v2.6.3 — 2026-06-26
 
 Zoom y desplazamiento (pan) en el editor para colocar los cortes con precisión.
