@@ -87,6 +87,12 @@ function iconMove(size = 11) {
 }
 
 /* ── Render helpers ────────────────────────────────────────────────────── */
+// Basque count style: singular → word after the number ("geruza 1"); plural →
+// number before the word ("2 geruza", "3 geruza").
+function countLabel(n, word) {
+  return n === 1 ? `${word} 1` : `${n} ${word}`;
+}
+
 function el(tag, cls, html) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -144,7 +150,7 @@ function renderJobCard(job) {
     <div class="job-card-indicator" title="Lan aktiboa"></div>
     <div class="job-card-info">
       <div class="job-card-name">${escHtml(job.name)}</div>
-      <div class="job-card-meta">${job.sheet_count} orri · ${job.print_count} geruza</div>
+      <div class="job-card-meta">${countLabel(job.sheet_count, 'orri')} · ${countLabel(job.print_count, 'geruza')}</div>
       <span class="format-pill">${job.format}</span>
     </div>`;
   main.addEventListener('click', () => selectJob(job.id));
@@ -307,8 +313,13 @@ function renderJobDetail() {
 
   const container = document.getElementById('sheets-container');
   container.innerHTML = '';
+  // Default (unnamed) sheets get a sequential Euskera ordinal "N. orria";
+  // named sheets (e.g. Iturriak, or user-renamed) keep their name.
+  let orriN = 0;
   for (const sheet of job.sheets) {
-    container.appendChild(renderSheet(sheet, job.format));
+    const hasName = sheet.name && sheet.name.trim();
+    const label = hasName ? sheet.name : `${++orriN}. orria`;
+    container.appendChild(renderSheet(sheet, job.format, label));
   }
 }
 
@@ -332,7 +343,7 @@ function renderIturriakSheet(sheet) {
   return card;
 }
 
-function renderSheet(sheet, fmt) {
+function renderSheet(sheet, fmt, label) {
   if (sheet.name === 'Iturriak') {
     return renderIturriakSheet(sheet);
   }
@@ -342,14 +353,16 @@ function renderSheet(sheet, fmt) {
 
   const header = el('div', 'sheet-header');
 
-  const nameEl = el('span', 'sheet-name', escHtml(sheet.name || `Orria ${sheet.order_num}`));
+  const nameEl = el('span', 'sheet-name', escHtml(label || `${sheet.order_num}. orria`));
   nameEl.contentEditable = 'true';
   nameEl.spellcheck = false;
   nameEl.addEventListener('blur', () => {
     const newName = nameEl.textContent.trim();
-    if (newName && newName !== sheet.name) {
-      safeCall(() => API.updateSheet(sheet.id, { name: newName }).then(() => loadJobs()));
-    }
+    if (newName === label) return;   // unchanged default/custom label
+    safeCall(() => API.updateSheet(sheet.id, { name: newName }).then(async () => {
+      await loadJob(state.selectedJobId);
+      await loadJobs();
+    }));
   });
   nameEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); } });
 

@@ -82,6 +82,8 @@ def init_db():
     sheet_cols = [row[1] for row in conn.execute("PRAGMA table_info(sheets)")]
     if 'rotation' not in sheet_cols:
         conn.execute("ALTER TABLE sheets ADD COLUMN rotation INTEGER NOT NULL DEFAULT 0")
+    # Old auto-names ("Orria N") → NULL so they renumber sequentially in the UI.
+    conn.execute("UPDATE sheets SET name = NULL WHERE name LIKE 'Orria %'")
     conn.commit()
     conn.close()
 
@@ -139,8 +141,9 @@ def db_create_job(conn, name: str, fmt: str, activate_globally: bool = True,
         (name, fmt, 1 if activate_globally else 0, source_user)
     )
     job_id = cur.lastrowid
+    # name NULL → frontend shows the sequential "N. orria" label.
     conn.execute(
-        "INSERT INTO sheets (job_id, name, order_num) VALUES (?, 'Orria 1', 1)", (job_id,)
+        "INSERT INTO sheets (job_id, name, order_num) VALUES (?, NULL, 1)", (job_id,)
     )
     return job_id
 

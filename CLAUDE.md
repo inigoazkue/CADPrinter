@@ -54,6 +54,8 @@ user_active_jobs (source_user PK, job_id FK → jobs)
 
 - `source_user`: nombre de usuario limpio extraído del dominio Windows (`EITB\azkue_inigo` → `azkue_inigo`). NULL para trabajos sin usuario.
 - `user_active_jobs`: tabla que mapea cada usuario a su trabajo activo. Independiente de `is_current`.
+- **Nombres de hoja**: las hojas por defecto se crean con `name = NULL` (backend) y el frontend les pone una etiqueta secuencial **"{n}. orria"** (euskera) numerando solo las hojas sin nombre (las nombradas como "Iturriak" o renombradas por el usuario no consumen número). Migración: los nombres antiguos `Orria %` se ponen a NULL para renumerar. Al renombrar inline solo se guarda si difiere de la etiqueta mostrada.
+- **Conteos del sidebar** (`countLabel`): estilo euskera — singular con el número detrás (`orri 1`, `geruza 1`) y plural con el número delante (`2 orri`, `3 geruza`).
 - `GET /api/jobs` devuelve `{"jobs": [...], "userActiveJobs": {user: job_id}}`.
 - **Editor unificado de geruza (capa)**: al hacer clic en la miniatura de cualquier print se abre el modal `#modal-split`, que es un editor con DOS modos según `cols`/`rows`:
   - **Modo posición** (`cols==1 && rows==1`, defecto para A3/A4… y para tiles ya creados): se arrastra la imagen del preview para reposicionar la capa sobre la hoja. La conversión px→mm usa `PAGE_SIZES_MM[refFmt]` (el ancho mostrado ↔ ancho de hoja en mm). Para tiles, `refFmt` es el formato del tile (no el del trabajo), porque la aurrebista de esa hoja se renderiza en formato tile. Al guardar llama a `POST /api/prints/{id}/edit`.

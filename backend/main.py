@@ -246,10 +246,10 @@ async def add_sheet(job_id: int):
         if not db.db_get_job(conn, job_id):
             raise HTTPException(404, "Job not found")
         order = db.db_next_sheet_order(conn, job_id)
-        name = f"Orria {order}"
+        # name NULL → frontend numbers default sheets sequentially ("N. orria").
         cur = conn.execute(
-            "INSERT INTO sheets (job_id, name, order_num) VALUES (?, ?, ?)",
-            (job_id, name, order)
+            "INSERT INTO sheets (job_id, name, order_num) VALUES (?, NULL, ?)",
+            (job_id, order)
         )
         sheet_id = cur.lastrowid
         conn.commit()
