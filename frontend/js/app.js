@@ -55,6 +55,7 @@ const API = {
   updatePrint:     (id, data)   => API.request('PATCH', `/prints/${id}`, data),
   splitPrint:      (id, params) => API.request('POST', `/prints/${id}/split`, params),
   editPrint:       (id, params) => API.request('POST', `/prints/${id}/edit`, params),
+  reusePrint:      (id, data)   => API.request('POST', `/prints/${id}/reuse`, data || {}),
   printPreviewUrl: (id)         => `/api/prints/${id}/preview`,
 
   async uploadPrint(sheetId, file) {
@@ -315,40 +316,69 @@ function renderJobDetail() {
   const container = document.getElementById('sheets-container');
   container.innerHTML = '';
   // Default (unnamed) sheets get a sequential Euskera ordinal "N. orria";
-  // named sheets (e.g. Iturriak, or user-renamed) keep their name.
+  // named sheets (user-renamed) keep their name. Iturriak sheets are NOT shown
+  // inline — they live in the "Iturriak" dropdown in the job header.
   let orriN = 0;
   for (const sheet of job.sheets) {
+    if (sheet.name === 'Iturriak') continue;
     const hasName = sheet.name && sheet.name.trim();
     const label = hasName ? sheet.name : `${++orriN}. orria`;
     container.appendChild(renderSheet(sheet, job.format, label));
   }
+
+  renderIturriakDropdown(job);
 }
 
-function renderIturriakSheet(sheet) {
-  const card = el('div', 'sheet-card sheet-iturriak');
-  const header = el('div', 'iturriak-header');
-  header.innerHTML = `<span class="iturriak-label">📁 Iturriak</span><span class="iturriak-hint">Jatorrizko fitxategia (erreferentzia)</span>`;
-  card.appendChild(header);
-  const printsRow = el('div', 'iturriak-prints');
-  for (const p of sheet.prints) {
-    const thumb = el('div', 'iturriak-thumb');
-    const img = el('img');
-    img.src = API.printPreviewUrl(p.id);
-    img.onerror = () => img.style.display = 'none';
-    const name = el('div', 'iturriak-name', escHtml((p.original_name || p.filename).replace(/\.\w+$/, '')));
-    thumb.appendChild(img);
-    thumb.appendChild(name);
-    printsRow.appendChild(thumb);
+// The Iturriak (split sources, kept for reference) live in a dropdown next to
+// the Formatua/Aktibatu buttons. Each source shows its preview and a button to
+// re-insert it as a PDF layer into the first sheet, so it can be reused.
+function renderIturriakDropdown(job) {
+  const dd = document.getElementById('iturriak-dd');
+  const btn = document.getElementById('btn-iturriak');
+  const panel = document.getElementById('iturriak-panel');
+  const countEl = document.getElementById('iturriak-count');
+  if (!dd) return;
+
+  const sources = [];
+  for (const sheet of job.sheets) {
+    if (sheet.name === 'Iturriak') sources.push(...sheet.prints);
   }
-  card.appendChild(printsRow);
-  return card;
+
+  if (!sources.length) {
+    dd.classList.add('hidden');
+    panel.classList.add('hidden');
+    return;
+  }
+  dd.classList.remove('hidden');
+  countEl.textContent = sources.length;
+
+  panel.innerHTML = '';
+  for (const p of sources) {
+    const item = el('div', 'iturriak-item');
+    const img = el('img', 'iturriak-item-img');
+    img.src = API.printPreviewUrl(p.id);
+    img.alt = p.original_name || p.filename;
+    img.onerror = () => { img.style.visibility = 'hidden'; };
+    const name = el('div', 'iturriak-item-name', escHtml((p.original_name || p.filename).replace(/\.\w+$/, '')));
+    const useBtn = el('button', 'btn btn-primary iturriak-use-btn', '⬇ Txertatu 1. orrian');
+    useBtn.title = 'PDF hau lehen orrian geruza gisa txertatu (berrerabili)';
+    useBtn.addEventListener('click', () => {
+      safeCall(async () => {
+        await API.reusePrint(p.id);
+        panel.classList.add('hidden');
+        await loadJob(state.selectedJobId);
+        await loadJobs();
+        showToast('Iturria txertatuta ✓');
+      });
+    });
+    item.appendChild(img);
+    item.appendChild(name);
+    item.appendChild(useBtn);
+    panel.appendChild(item);
+  }
 }
 
 function renderSheet(sheet, fmt, label) {
-  if (sheet.name === 'Iturriak') {
-    return renderIturriakSheet(sheet);
-  }
-
   const card = el('div', 'sheet-card');
   card.dataset.sheetId = sheet.id;
 
@@ -498,6 +528,7 @@ function renderPrint(p, sheetId, jobFmt) {
         rotation: 90,
         offset_x_mm: p.offset_x_mm || 0,
         offset_y_mm: p.offset_y_mm || 0,
+        scale: p.scale || 1,
       });
       await loadJob(state.selectedJobId);
       showToast('90° biratuta');
@@ -666,7 +697,8 @@ const splitState = {
   offsetY: 0,
   tx: 0,        // current translate in px (position mode)
   ty: 0,
-  zoom: 1,      // preview zoom factor
+  layerScale: 1, // REAL layer scale (persisted, affects output) — set by +/−/▢
+  zoom: 1,      // preview-only zoom factor (mouse wheel)
   panX: 0,      // preview pan in px
   panY: 0,
   _baseW: 0,    // zoom box base size (unscaled)
@@ -693,6 +725,7 @@ function openEditModal(p, jobFmt) {
   splitState.tileFormat = 'A3';
   splitState.offsetX = p.offset_x_mm || 0;
   splitState.offsetY = p.offset_y_mm || 0;
+  splitState.layerScale = (p.scale && p.scale > 0) ? p.scale : 1;
   splitState.tx = 0;
   splitState.ty = 0;
   splitState.zoom = 1;
@@ -745,8 +778,8 @@ function syncModalControls() {
   const hint = document.querySelector('#modal-split .split-hint');
   if (hint) {
     hint.textContent = split
-      ? 'Arrastatu lerro beltzak zatiketa-puntua aldatzeko'
-      : 'Arrastatu irudia kokapena doitzeko';
+      ? 'Arrastatu lerro beltzak zatiketa-puntua aldatzeko · gurpilarekin ikuspegi-zooma'
+      : 'Arrastatu irudia kokatzeko · −/+ tamaina erreala · gurpilarekin ikuspegi-zooma';
   }
   const h2 = document.querySelector('#modal-split h2');
   if (h2) h2.textContent = split ? 'PDF zatitu tilesetan' : 'Geruza editatu';
@@ -783,6 +816,38 @@ function resetZoom() {
   splitState.panX = splitState._baseLeft || 0;
   splitState.panY = splitState._baseTop || 0;
   applyZoom();
+}
+
+// ── REAL layer scale (position mode) ──
+// The +/−/▢ buttons change the layer's ACTUAL size (persisted, affects the
+// output), unlike the mouse wheel which only zooms the view.
+function updateScaleLabel() {
+  const lbl = document.getElementById('zoom-scale-label');
+  if (!lbl) return;
+  if (isSplitMode()) { lbl.textContent = ''; lbl.style.visibility = 'hidden'; return; }
+  lbl.style.visibility = 'visible';
+  lbl.textContent = Math.round((splitState.layerScale || 1) * 100) + '%';
+}
+
+function applyLayerScale() {
+  const img = document.getElementById('split-preview-img');
+  const sc = splitState.layerScale || 1;
+  img.style.width = (splitState._layerBaseW * sc) + 'px';
+  img.style.height = (splitState._layerBaseH * sc) + 'px';
+  updateScaleLabel();
+}
+
+function scaleStep(factor) {
+  // In split mode there is no single element to resize → fall back to view zoom.
+  if (isSplitMode()) { zoomAt(factor > 1 ? 1.25 : 1 / 1.25, null, null); return; }
+  splitState.layerScale = Math.max(0.1, Math.min(10, (splitState.layerScale || 1) * factor));
+  applyLayerScale();
+}
+
+// ▢ button: reset the REAL scale to 100% (position mode) AND recenter the view.
+function resetScaleAndView() {
+  if (!isSplitMode()) { splitState.layerScale = 1; applyLayerScale(); }
+  resetZoom();
 }
 
 // (Re)build the preview content (image, folio box, cut lines) and lay out the
@@ -831,10 +896,16 @@ function refreshModalMode() {
 
     splitState.tx = (splitState.offsetX / folio[0]) * r.w;
     splitState.ty = (splitState.offsetY / folio[1]) * r.h;
+    // The layer renders at its native size on the folio, times the REAL scale
+    // (anchored top-left, like the backend composition). Store the unscaled px
+    // dims so the +/− buttons can rescale live.
+    splitState._layerBaseW = r.w * (layer[0] / folio[0]);
+    splitState._layerBaseH = r.h * (layer[1] / folio[1]);
+    const sc = splitState.layerScale || 1;
     Object.assign(img.style, {
       position: 'absolute', left: '0', top: '0', maxWidth: 'none', maxHeight: 'none',
-      width: (r.w * (layer[0] / folio[0])) + 'px',
-      height: (r.h * (layer[1] / folio[1])) + 'px',
+      width: (splitState._layerBaseW * sc) + 'px',
+      height: (splitState._layerBaseH * sc) + 'px',
       transform: `translate(${splitState.tx}px, ${splitState.ty}px)`,
       cursor: 'move', zIndex: '2',
     });
@@ -846,6 +917,7 @@ function refreshModalMode() {
   }
   resetZoom();
   syncModalControls();
+  updateScaleLabel();
 }
 
 function renderSplitDividers() {
@@ -1004,9 +1076,10 @@ function setupZoomPan() {
     else startPan(e);
   });
 
-  document.getElementById('zoom-in').addEventListener('click', () => zoomAt(1.25, null, null));
-  document.getElementById('zoom-out').addEventListener('click', () => zoomAt(1 / 1.25, null, null));
-  document.getElementById('zoom-reset').addEventListener('click', resetZoom);
+  // Buttons resize the element for REAL (position mode); wheel = view-only zoom.
+  document.getElementById('zoom-in').addEventListener('click', () => scaleStep(1.05));
+  document.getElementById('zoom-out').addEventListener('click', () => scaleStep(1 / 1.05));
+  document.getElementById('zoom-reset').addEventListener('click', resetScaleAndView);
 }
 
 function wireSplitControls() {
@@ -1080,6 +1153,7 @@ async function submitSplit() {
         rotation: splitState.rotation,
         offset_x_mm: splitState.offsetX,
         offset_y_mm: splitState.offsetY,
+        scale: splitState.layerScale || 1,
       });
       closeSplitModal();
       await loadJob(state.selectedJobId);
@@ -1119,6 +1193,18 @@ function wireButtons() {
   });
 
   document.getElementById('btn-change-format').addEventListener('click', openFormatModal);
+
+  // Iturriak dropdown: toggle on button click, close on outside click.
+  document.getElementById('btn-iturriak').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('iturriak-panel').classList.toggle('hidden');
+  });
+  document.addEventListener('click', e => {
+    const dd = document.getElementById('iturriak-dd');
+    if (dd && !dd.contains(e.target)) {
+      document.getElementById('iturriak-panel').classList.add('hidden');
+    }
+  });
 
   document.getElementById('btn-delete-job').addEventListener('click', async () => {
     if (!confirm(`"${state.selectedJob?.name}" lana ezabatu?\nBere PDF guztiak ezabatuko dira.`)) return;

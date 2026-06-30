@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS prints (
     received_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     offset_x_mm   REAL    DEFAULT 0,
     offset_y_mm   REAL    DEFAULT 0,
+    scale         REAL    DEFAULT 1.0,
     tile_col      INTEGER,
     tile_row      INTEGER,
     FOREIGN KEY (job_id)   REFERENCES jobs(id)   ON DELETE CASCADE,
@@ -72,6 +73,8 @@ def init_db():
         conn.execute("ALTER TABLE prints ADD COLUMN offset_x_mm REAL DEFAULT 0")
     if 'offset_y_mm' not in print_cols:
         conn.execute("ALTER TABLE prints ADD COLUMN offset_y_mm REAL DEFAULT 0")
+    if 'scale' not in print_cols:
+        conn.execute("ALTER TABLE prints ADD COLUMN scale REAL DEFAULT 1.0")
     if 'tile_col' not in print_cols:
         conn.execute("ALTER TABLE prints ADD COLUMN tile_col INTEGER")
     if 'tile_row' not in print_cols:
@@ -130,7 +133,7 @@ def db_get_job_full(conn, job_id: int):
     result["sheets"] = []
     for sheet in sheets:
         prints = conn.execute(
-            "SELECT * FROM prints WHERE sheet_id = ? ORDER BY order_num, received_at",
+            "SELECT * FROM prints WHERE sheet_id = ? ORDER BY received_at, id",
             (sheet["id"],)
         ).fetchall()
         result["sheets"].append({**dict(sheet), "prints": [dict(p) for p in prints]})

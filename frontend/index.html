@@ -48,6 +48,10 @@
           <span id="job-format-badge" class="format-badge"></span>
         </div>
         <div class="job-actions">
+          <div class="iturriak-dd hidden" id="iturriak-dd">
+            <button class="btn btn-ghost" id="btn-iturriak" type="button">📁 Iturriak <span class="iturriak-count" id="iturriak-count"></span></button>
+            <div class="iturriak-panel hidden" id="iturriak-panel"></div>
+          </div>
           <button class="btn btn-ghost" id="btn-change-format">Formatua</button>
           <button class="btn btn-ghost" id="btn-activate-job">Aktibatu</button>
           <button class="btn btn-danger" id="btn-delete-job">Ezabatu</button>
@@ -146,11 +150,12 @@
             </div>
           </div>
           <div class="split-toolbar">
-            <button type="button" id="zoom-out" class="zoom-btn" title="Txikiagotu">−</button>
-            <button type="button" id="zoom-reset" class="zoom-btn" title="Jatorrizko ikuspegia">▢</button>
-            <button type="button" id="zoom-in" class="zoom-btn" title="Handiagotu">+</button>
+            <button type="button" id="zoom-out" class="zoom-btn" title="Txikiagotu (tamaina erreala)">−</button>
+            <button type="button" id="zoom-reset" class="zoom-btn" title="Tamaina erreala %100 + ikuspegia berrezarri">▢</button>
+            <button type="button" id="zoom-in" class="zoom-btn" title="Handiagotu (tamaina erreala)">+</button>
+            <span id="zoom-scale-label" class="zoom-scale-label" title="Geruzaren tamaina erreala">100%</span>
           </div>
-          <p class="split-hint">Arrastatu lerro beltzak zatiketa-puntua aldatzeko · gurpilarekin zoom · arrastatu nabigatzeko</p>
+          <p class="split-hint">−/+/▢ botoiek geruzaren tamaina erreala aldatzen dute (irteeran) · gurpilarekin ikuspegi-zooma · arrastatu nabigatzeko edo kokatzeko</p>
         </div>
         <div class="split-right">
           <div class="split-control-group">

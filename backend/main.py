@@ -214,7 +214,7 @@ def export_job(job_id: int):
             tile_prints = [p for p in enabled if p.get("tile_col") is not None]
             fmt_for_sheet = (tile_prints[0].get("format") or job["format"]) if tile_prints else job["format"]
             sheets_paths.append([str(db.PRINTS_DIR / p["filename"]) for p in enabled])
-            sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0} for p in enabled])
+            sheets_offsets.append([{"x_mm": p.get("offset_x_mm") or 0, "y_mm": p.get("offset_y_mm") or 0, "scale": p.get("scale") or 1.0} for p in enabled])
             sheet_formats.append(fmt_for_sheet)
             sheet_rotations.append(sheet.get("rotation") or 0)
 
@@ -316,7 +316,7 @@ def sheet_preview(sheet_id: int):
             raise HTTPException(404, "Sheet not found")
         job = db.db_get_job(conn, sheet["job_id"])
         prints = conn.execute(
-            "SELECT * FROM prints WHERE sheet_id = ? AND enabled = 1 ORDER BY order_num, received_at",
+            "SELECT * FROM prints WHERE sheet_id = ? AND enabled = 1 ORDER BY received_at, id",
             (sheet_id,)
         ).fetchall()
         preview_path = str(db.PREVIEWS_DIR / f"sheet_{sheet_id}_combined.png")
@@ -328,7 +328,7 @@ def sheet_preview(sheet_id: int):
         tile_prints = [p for p in prints if p["tile_col"] is not None]
         fmt = (tile_prints[0]["format"] or job["format"]) if tile_prints else job["format"]
         paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
-        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
+        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0, "scale": (p["scale"] if "scale" in p.keys() else None) or 1.0} for p in prints]
         rotation = sheet["rotation"] if "rotation" in sheet.keys() else 0
         # auto_orient=False: the sheet canvas does NOT follow the layers; its
         # orientation is controlled ONLY by the manual sheet rotation (↻ button).
@@ -356,7 +356,7 @@ def sheet_ghost(sheet_id: int, exclude: int = 0):
         job = db.db_get_job(conn, sheet["job_id"])
         prints = conn.execute(
             "SELECT * FROM prints WHERE sheet_id = ? AND enabled = 1 AND id != ? "
-            "ORDER BY order_num, received_at",
+            "ORDER BY received_at, id",
             (sheet_id, exclude)
         ).fetchall()
         if not prints:
@@ -364,7 +364,7 @@ def sheet_ghost(sheet_id: int, exclude: int = 0):
         tile_prints = [p for p in prints if p["tile_col"] is not None]
         fmt = (tile_prints[0]["format"] or job["format"]) if tile_prints else job["format"]
         paths = [str(db.PRINTS_DIR / p["filename"]) for p in prints]
-        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0} for p in prints]
+        offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0, "scale": (p["scale"] if "scale" in p.keys() else None) or 1.0} for p in prints]
         ghost_path = str(db.PREVIEWS_DIR / f"ghost_{sheet_id}.png")
         # auto_orient=False + rotation=0 → same base folio the editor shows.
         pdf_utils.generate_sheet_preview(paths, fmt, ghost_path, offsets=offsets,
@@ -437,7 +437,7 @@ def print_preview(print_id: int, rotation: int = 0, placed: int = 0, hires: int 
             if os.path.exists(pdf_path):
                 job = db.db_get_job(conn, p["job_id"])
                 fmt = (p["format"] if p["tile_col"] is not None else job["format"]) or "A3"
-                offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0}]
+                offsets = [{"x_mm": p["offset_x_mm"] or 0, "y_mm": p["offset_y_mm"] or 0, "scale": (p["scale"] if "scale" in p.keys() else None) or 1.0}]
                 placed_path = str(db.PREVIEWS_DIR / f"placed_{print_id}.png")
                 if pdf_utils.generate_sheet_preview([pdf_path], fmt, placed_path, offsets=offsets):
                     return FileResponse(placed_path, media_type="image/png",
@@ -494,6 +494,7 @@ class PrintEdit(BaseModel):
     rotation: int = 0
     offset_x_mm: float = 0
     offset_y_mm: float = 0
+    scale: float = 1.0
 
 
 @app.post("/api/prints/{print_id}/edit")
@@ -519,9 +520,10 @@ async def edit_print(print_id: int, body: PrintEdit):
                 pdf_utils.generate_preview(pdf_path, p["preview_path"])
             new_format = pdf_utils.detect_format(pdf_path)
 
+        scale = body.scale if body.scale and body.scale > 0 else 1.0
         conn.execute(
-            "UPDATE prints SET offset_x_mm = ?, offset_y_mm = ?, format = ? WHERE id = ?",
-            (body.offset_x_mm, body.offset_y_mm, new_format, print_id)
+            "UPDATE prints SET offset_x_mm = ?, offset_y_mm = ?, scale = ?, format = ? WHERE id = ?",
+            (body.offset_x_mm, body.offset_y_mm, scale, new_format, print_id)
         )
         conn.commit()
         await broadcast("job_updated", {"job_id": p["job_id"]})
@@ -546,6 +548,74 @@ async def delete_print(print_id: int):
         conn.commit()
         await broadcast("print_deleted", {"print_id": print_id, "job_id": job_id})
         return {"ok": True}
+    finally:
+        conn.close()
+
+
+class PrintReuse(BaseModel):
+    sheet_id: Optional[int] = None
+
+
+@app.post("/api/prints/{print_id}/reuse", status_code=201)
+async def reuse_print(print_id: int, body: PrintReuse):
+    """Copy a print (e.g. an Iturriak source) into a sheet as a NEW enabled,
+    normal layer so it can be used again. The PDF file is duplicated (not
+    shared) so deleting either copy never touches the other. By default it lands
+    on the first real (non-Iturriak) sheet of the job, reset to offset 0 / 1:1."""
+    conn = db.get_db()
+    try:
+        p = conn.execute("SELECT * FROM prints WHERE id = ?", (print_id,)).fetchone()
+        if not p:
+            raise HTTPException(404, "Print not found")
+        p = dict(p)
+        job_id = p["job_id"]
+
+        target_id = body.sheet_id
+        if target_id is None:
+            # First sheet that is NOT an Iturriak reference sheet.
+            row = conn.execute(
+                "SELECT id FROM sheets WHERE job_id = ? "
+                "AND COALESCE(name, '') != 'Iturriak' ORDER BY order_num LIMIT 1",
+                (job_id,)
+            ).fetchone()
+            if not row:
+                raise HTTPException(400, "No target sheet available")
+            target_id = row["id"]
+        else:
+            sh = conn.execute("SELECT * FROM sheets WHERE id = ?", (target_id,)).fetchone()
+            if not sh or sh["job_id"] != job_id:
+                raise HTTPException(400, "Invalid sheet")
+
+        src_path = db.PRINTS_DIR / p["filename"]
+        if not src_path.exists():
+            raise HTTPException(404, "Source PDF not found on disk")
+
+        new_id = _new_id()
+        # Avoid colliding with the source if generated within the same ms.
+        if new_id == print_id:
+            new_id = (new_id + 1) % (2 ** 31)
+        ext = Path(p["filename"]).suffix or ".pdf"
+        new_filename = f"{new_id}{ext}"
+        new_path = db.PRINTS_DIR / new_filename
+        shutil.copyfile(src_path, new_path)
+
+        new_preview = str(db.PREVIEWS_DIR / f"{new_id}.png")
+        if not pdf_utils.generate_preview(str(new_path), new_preview):
+            new_preview = None
+
+        order = _next_print_order(conn, target_id)
+        # Inserted as a normal layer: tile_col NULL, offset 0, scale 1, enabled.
+        conn.execute(
+            """INSERT INTO prints
+                 (id, job_id, sheet_id, filename, original_name, preview_path,
+                  order_num, format, source_user, enabled, offset_x_mm, offset_y_mm, scale)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 1.0)""",
+            (new_id, job_id, target_id, new_filename, p.get("original_name") or p["filename"],
+             new_preview, order, p["format"], p.get("source_user"))
+        )
+        conn.commit()
+        await broadcast("job_updated", {"job_id": job_id})
+        return dict(conn.execute("SELECT * FROM prints WHERE id = ?", (new_id,)).fetchone())
     finally:
         conn.close()
 

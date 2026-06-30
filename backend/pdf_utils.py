@@ -94,7 +94,9 @@ def _compose_sheet(pdf_paths, offsets, fmt, rotation=0, auto_orient=True):
                 off = (offsets[i] if offsets and i < len(offsets) else None) or {}
                 ox = (off.get('x_mm') or 0) * PT_PER_MM
                 oy = (off.get('y_mm') or 0) * PT_PER_MM
-                cp.show_pdf_page(fitz.Rect(ox, oy, ox + sw, oy + sh), src, 0)
+                # Manual per-layer scale (1.0 = native 1:1), anchored top-left.
+                sc = off.get('scale') or 1.0
+                cp.show_pdf_page(fitz.Rect(ox, oy, ox + sw * sc, oy + sh * sc), src, 0)
                 src.close()
             except Exception as e:
                 print(f"[compose] Skipping {path}: {e}")
