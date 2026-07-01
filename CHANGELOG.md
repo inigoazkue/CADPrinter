@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.7.0 — 2026-06-26
+
+Escala real de capa desde los botones de zoom, orden de capas por llegada y las Iturriak en un desplegable reutilizable.
+
+### Editor
+
+- **Botones −/+/▢ = tamaño real**: en modo posición, los botones de zoom cambian ahora la **escala real** de la capa (persistida en `prints.scale`), de modo que la capa se ve más grande o más pequeña **en la salida final** (aurrebista, miniatura y export). Pasos del 5 %, límites 10 %–1000 %; un indicador muestra el porcentaje. El botón **▢** devuelve la escala al 100 % y recentra la vista.
+- **La rueda del ratón** sigue siendo **zoom de solo visualización** (para afinar sin afectar a la salida). En modo split los botones siguen haciendo zoom de visualización (no hay una única capa que escalar).
+- El botón ↻ de la miniatura **preserva** la escala (antes la reseteaba).
+
+### Capas
+
+- **Orden por llegada**: las capas de cada hoja se ordenan por **orden de llegada** (`received_at, id`) en la rejilla, la aurrebista y el fantasma. La que llega después se apila encima. (Antes se usaba `order_num`, que intercalaba mal los tiles con las páginas.)
+
+### Iturriak
+
+- **Desplegable en vez de hoja**: las Iturriak (originales de un corte, guardados como referencia) ya no ocupan una hoja en el listado. Ahora hay un botón **📁 Iturriak** (con contador) junto a Formatua/Aktibatu que abre un desplegable con la previsualización de cada fuente.
+- **Reutilizar**: cada iturria tiene un botón **«⬇ Txertatu 1. orrian»** que la re-inserta como capa PDF en la primera hoja (`POST /api/prints/{id}/reuse`), **duplicando el fichero** para que las copias sean independientes.
+
+---
+
 ## v2.6.5 — 2026-06-26
 
 Transparencia del blanco en el editor, contorno al borde real, nombres de trabajo y formato según el corte.
